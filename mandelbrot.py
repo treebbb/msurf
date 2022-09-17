@@ -63,9 +63,10 @@ class MBrotProcessor:
             'n' is the iteration number
             return (blue, green, red), pixel_size_of_dot
             '''
-            DIVS = 120
+            SIZE_DIV= (maxiter//5)
+            DIVS = SIZE_DIV  # was 120
             i = n % DIVS
-            size = 5 - ((n // DIVS) % 5)
+            size = 5 - ((n // SIZE_DIV) % 5)
             degrees = i * (360./DIVS)
             rad = i * (2*pi) / DIVS
             green_shift = 2 * pi / 3  # 240 degrees
@@ -112,12 +113,12 @@ class MBrotProcessor:
 
 def main():
     # retina display 2880 x 1800
-    #xmin, xmax, xn = -2.25, +1.75, 2880
-    #ymin, ymax, yn = -1.25, +1.25, 1800
-    xmin, xmax, xn = -2.25, +1.75, 600
-    ymin, ymax, yn = -1.25, +1.25, 400
-    fps = 25
-    duration_seconds = 2
+    xmin, xmax, xn = -2.25, +1.75, 2880
+    ymin, ymax, yn = -1.25, +1.25, 1800
+    #xmin, xmax, xn = -2.25, +1.75, 600
+    #ymin, ymax, yn = -1.25, +1.25, 400
+    fps = 12
+    duration_seconds = 45
     num_frames = fps * duration_seconds
     maxiter = 200
     horizon = 2.0 ** 40
@@ -141,14 +142,9 @@ def main():
     print(M.shape)
     print(M.dtype, np.max(M), np.min(M))
     M = M.astype(np.uint8)
-    xinterval = (xmax - xmin) / xn
-    x0 = int((0 - xmin) / xinterval)
-    print(x0)
-    M[:, x0, 2] = 255
     #
     print(M.shape, M.dtype)
     w = MP4Writer('x.mp4', fps, xn, yn, is_color=True)
-    '''
     for frame in range(num_frames):
         trace = mb.traceArray[frame]
         # xdim, ydim = np.where(trace > 0)
@@ -156,14 +152,17 @@ def main():
         # has_values = list(zip(xdim, ydim))
         # print(n, has_values)
         # convert 3D to 4D with first axis as time/frames
-        x = np.copy(np.expand_dims(M, axis=0))
-        x[:, 0:yn, 0:xn] = np.maximum(x[:, 0:yn, 0:xn], trace)
+        #x = np.copy(np.expand_dims(M, axis=0))
+        x = np.copy(M)
+        x = np.maximum(x, trace)
+        x = np.expand_dims(x, axis=0)
         if frame == 0:
             print(x.shape)
         w.write_frames(x)
     '''
     w.write_frames(mb.traceArray)
     w.commit()
+    '''
 
 #mb = MBrotProcessor()
 #mb.mbrot2(-1.76, 0.01, do_print=True)
