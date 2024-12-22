@@ -9,17 +9,17 @@ def mandelbrot_set(xmin, xmax, ymin, ymax, xn, yn, maxiter, horizon=2.0):
     complex = real[:, np.newaxis] + imaginary[np.newaxis, :] * 1j
     # N is the count of repetitions before reaching the horizon
     # shape [xn, yn]
-    mandlebrot = np.zeros(complex.shape, dtype=np.int32)
+    mandelbrot = np.zeros(complex.shape, dtype=np.int32)
     # Z is the calculation in the real plane, updated each repetition
     z = np.zeros_like(complex)
     # the point to sample to create the trace array
     for n in range(maxiter):
         points_in_bounds = np.where(np.abs(z) < horizon)
         z[points_in_bounds] = z[points_in_bounds]**2 + complex[points_in_bounds]
-        mandlebrot[points_in_bounds] = n
-    mandlebrot[mandlebrot == maxiter-1] = 0  # inside black
-    # mandlebrot[np.abs(z) <= horizon] = maxiter  # inside white
-    return mandlebrot
+        mandelbrot[points_in_bounds] = n
+    mandelbrot[mandelbrot == maxiter-1] = 0  # inside black
+    # mandelbrot[np.abs(z) <= horizon] = maxiter  # inside white
+    return mandelbrot
 
 
 @jit(nopython=True, cache=True)
@@ -61,7 +61,7 @@ def mandelbrot_set_jit(xmin, xmax, ymin, ymax, xn, yn, maxiter, horizon=2.0):
     return mandelbrot
 
 
-class MandlebrotFuncs:
+class MandelbrotFuncs:
 
     def __init__(self):
         pass
@@ -91,20 +91,20 @@ class MandlebrotFuncs:
         return [color_size_for_div_index(n) for n in range(maxiter)]
 
 
-    def mandlebrot_image(self, image_dims: (int,int), mbrot_center: (float, float) = (-0.5,0), mbrot_width: float = 2.0):
+    def mandelbrot_image(self, image_dims: (int,int), mbrot_center: (float, float) = (-0.5,0), mbrot_width: float = 2.0):
         mbrot_height = mbrot_width * image_dims[1] / image_dims[0]
         xmin, xmax, xn = mbrot_center[0] - (mbrot_width / 2), mbrot_center[0] + (mbrot_width / 2), image_dims[0]
         ymin, ymax, yn = mbrot_center[1] - (mbrot_height / 2), mbrot_center[1] + (mbrot_height / 2), image_dims[1]
         maxiter = 200
-        mandlebrot = mandelbrot_set(xmin, xmax, ymin, ymax, xn, yn, maxiter)
-        normalized = (mandlebrot / maxiter * 255).astype(np.uint8)
+        mandelbrot = mandelbrot_set(xmin, xmax, ymin, ymax, xn, yn, maxiter)
+        normalized = (mandelbrot / maxiter * 255).astype(np.uint8)
         normalized = np.rot90(normalized, k=1)
         grayscale_as_rgb = np.repeat(normalized[:, :, np.newaxis], 3, axis=2)
         return grayscale_as_rgb
 
 def generate_sample(filename):
-    m = MandlebrotFuncs()
-    image_array = m.mandlebrot_image((1200,800))
+    m = MandelbrotFuncs()
+    image_array = m.mandelbrot_image((1200,800))
     from PIL import Image, ImageTk
     image = Image.fromarray(image_array, 'RGB')
     image.save(filename, format='JPEG', quality=95)
@@ -117,7 +117,7 @@ def test(profile=True):
     if os.path.exists(sample_filename):
         os.unlink(sample_filename)
     if profile:
-        profile_stats_file = 'mandlebrot_profile'
+        profile_stats_file = 'mandelbrot_profile'
         cProfile.run(f'generate_sample({sample_filename!r})', profile_stats_file)
         p = Stats(profile_stats_file)
         p.sort_stats('cumulative').print_stats(10)
