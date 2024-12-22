@@ -96,7 +96,7 @@ class MandlebrotFuncs:
         xmin, xmax, xn = mbrot_center[0] - (mbrot_width / 2), mbrot_center[0] + (mbrot_width / 2), image_dims[0]
         ymin, ymax, yn = mbrot_center[1] - (mbrot_height / 2), mbrot_center[1] + (mbrot_height / 2), image_dims[1]
         maxiter = 200
-        mandlebrot = mandelbrot_set_jit(xmin, xmax, ymin, ymax, xn, yn, maxiter)
+        mandlebrot = mandelbrot_set(xmin, xmax, ymin, ymax, xn, yn, maxiter)
         normalized = (mandlebrot / maxiter * 255).astype(np.uint8)
         normalized = np.rot90(normalized, k=1)
         grayscale_as_rgb = np.repeat(normalized[:, :, np.newaxis], 3, axis=2)
@@ -104,7 +104,7 @@ class MandlebrotFuncs:
 
 def generate_sample(filename):
     m = MandlebrotFuncs()
-    image_array = m.mandlebrot_image((1200,1200))
+    image_array = m.mandlebrot_image((1200,800))
     from PIL import Image, ImageTk
     image = Image.fromarray(image_array, 'RGB')
     image.save(filename, format='JPEG', quality=95)
