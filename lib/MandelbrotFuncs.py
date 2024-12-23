@@ -1,11 +1,14 @@
+from MandelbrotParams import MandelbrotParams
 from numba import jit, prange
 import numpy as np
 
 
-def mandelbrot_set(xmin, xmax, ymin, ymax, xn, yn, maxiter, horizon=2.0):
+def mandelbrot_set(params: MandelbrotParams, horizon=2.0):
+    xmin, xmax, ymin, ymax, xn, yn, maxiter = params.xmin, params.xmax, params.ymin, params.ymax, params.width, params.height, params.maxiter
+    print(f'mandelbrot_set({params.get_params()})')
     # C is a 2d array of points on the real plane
-    real = np.linspace(xmin, xmax, xn).astype(np.float32)
-    imaginary = np.linspace(ymin, ymax, yn).astype(np.float32)
+    real = np.linspace(xmin, xmax, xn).astype(np.float64)
+    imaginary = np.linspace(ymin, ymax, yn).astype(np.float64)
     complex = real[:, np.newaxis] + imaginary[np.newaxis, :] * 1j
     # N is the count of repetitions before reaching the horizon
     # shape [xn, yn]
@@ -23,19 +26,20 @@ def mandelbrot_set(xmin, xmax, ymin, ymax, xn, yn, maxiter, horizon=2.0):
 
 
 @jit(nopython=True, cache=True)
-def mandelbrot_set_jit(xmin, xmax, ymin, ymax, xn, yn, maxiter, horizon=2.0):
+def mandelbrot_set_jit(params: MandelbrotParams, horizon=2.0):
+    xmin, xmax, ymin, ymax, xn, yn, maxiter = params.xmin, params.xmax, params.ymin, params.ymax, params.width, params.height, params.maxiter
     # C is a 2d array of points on the real plane
-    real = np.linspace(xmin, xmax, xn).astype(np.float32)
-    imaginary = np.linspace(ymin, ymax, yn).astype(np.float32)
+    real = np.linspace(xmin, xmax, xn).astype(np.float64)
+    imaginary = np.linspace(ymin, ymax, yn).astype(np.float64)
     complex = real[:, np.newaxis] + imaginary[np.newaxis, :] * 1j
-    
+
     # N is the count of repetitions before reaching the horizon
     # shape [xn, yn]
     mandelbrot = np.zeros((yn, xn), dtype=np.int32)
-    
+
     # Z is the calculation in the real plane, updated each repetition
     z = np.zeros_like(complex)
-    
+
     # Iterate over each point
     for n in range(maxiter):
         # Flatten the array for easier indexing
@@ -56,7 +60,7 @@ def mandelbrot_set_jit(xmin, xmax, ymin, ymax, xn, yn, maxiter, horizon=2.0):
     for i in range(flat_mandelbrot.shape[0]):
         if flat_mandelbrot[i] == maxiter - 1:
             flat_mandelbrot[i] = 0
-    
+
     mandelbrot = flat_mandelbrot.reshape(mandelbrot.shape)
     return mandelbrot
 
@@ -91,24 +95,40 @@ class MandelbrotFuncs:
         return [color_size_for_div_index(n) for n in range(maxiter)]
 
 
-    def mandelbrot_image(self, image_dims: (int,int), mbrot_center: (float, float) = (-0.5,0), mbrot_width: float = 2.0):
-        mbrot_height = mbrot_width * image_dims[1] / image_dims[0]
-        xmin, xmax, xn = mbrot_center[0] - (mbrot_width / 2), mbrot_center[0] + (mbrot_width / 2), image_dims[0]
-        ymin, ymax, yn = mbrot_center[1] - (mbrot_height / 2), mbrot_center[1] + (mbrot_height / 2), image_dims[1]
-        maxiter = 200
-        mandelbrot = mandelbrot_set(xmin, xmax, ymin, ymax, xn, yn, maxiter)
-        normalized = (mandelbrot / maxiter * 255).astype(np.uint8)
+    def mandelbrot_image(self, params):
+        mandelbrot = mandelbrot_set(params)
+        normalized = (mandelbrot / params.maxiter * 255).astype(np.uint8)
         normalized = np.rot90(normalized, k=1)
         grayscale_as_rgb = np.repeat(normalized[:, :, np.newaxis], 3, axis=2)
         return grayscale_as_rgb
 
 def generate_sample(filename):
     m = MandelbrotFuncs()
-    image_array = m.mandelbrot_image((1200,800))
+    #image_dims: (int,int), mbrot_center: (float, float) = (-0.5,0), mbrot_width: float = 2.0):
+    mbrot_center = (-0.5, 0)
+    mbrot_width = 2.0
+    image_dims = (1200, 800)
+    mbrot_height = mbrot_width * image_dims[1] / image_dims[0]
+    xmin, xmax, xn = mbrot_center[0] - (mbrot_width / 2), mbrot_center[0] + (mbrot_width / 2), image_dims[0]
+    ymin, ymax, yn = mbrot_center[1] - (mbrot_height / 2), mbrot_center[1] + (mbrot_height / 2), image_dims[1]
+    maxiter = 200
+    params = MandelbrotParams(xmin, xmax, ymin, ymax, xn, yn, maxiter)
+    image_array = m.mandelbrot_image(params)
     from PIL import Image, ImageTk
     image = Image.fromarray(image_array, 'RGB')
     image.save(filename, format='JPEG', quality=95)
-    
+    return params
+
+def test_zoom(params, filename):
+    params.zoom_by_bbox(0,600, 0, 400)
+    m = MandelbrotFuncs()
+    m.mandelbrot_image(params)
+    image_array = m.mandelbrot_image(params)
+    from PIL import Image, ImageTk
+    image = Image.fromarray(image_array, 'RGB')
+    image.save(filename, format='JPEG', quality=95)
+    return params
+
 def test(profile=True):
     import os
     import cProfile
@@ -122,8 +142,9 @@ def test(profile=True):
         p = Stats(profile_stats_file)
         p.sort_stats('cumulative').print_stats(10)
     else:
-        generate_sample(sample_filename)
+        params = generate_sample(sample_filename)
+        test_zoom(params, 'x2.jpg')
 
 
 if __name__ == '__main__':
-    test(profile=True)
+    test(profile=False)
