@@ -117,14 +117,8 @@ class MandelbrotFuncs:
 
         # Read results back to host
         #mandelbrot = np.empty_like(c_real, dtype=np.int32)
-        mandelbrot = np.zeros_like(c_real, dtype=np.int32)
-        print('pre: sum: ', sum(sum(mandelbrot)))
-        print('pre: shape: ', mandelbrot.shape)
-        print('pre: num == 128', np.sum(mandelbrot == 128))
+        mandelbrot = np.empty_like(c_real, dtype=np.int32)
         cl.enqueue_copy(self.queue, mandelbrot, output_buf)
-        print('post: sum: ', sum(sum(mandelbrot)))
-        print('post: shape: ', mandelbrot.shape)
-        print('post: num == 128', np.sum(mandelbrot == 128))
         # Cleanup
         c_real_buf.release()
         c_imag_buf.release()
