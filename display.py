@@ -8,6 +8,17 @@ import numpy as np
 
 
 class CurPointState:
+    '''
+    used to track a single point and allow display of position
+    at each iteration
+
+    orig is the starting point
+    steps is the number of iterations since the starting point
+    history is a pre-calculated list of iteration positions
+
+    escape_count is length(history) and is the number of iterations
+    before abs(z) > 2.0 -- or maxiter if it doesn't escape
+    '''
     orig = 0 + 0j
     steps = 0
     history = None
@@ -51,17 +62,27 @@ class CurPointState:
             self.history.append(z)
             self.escape_count += 1
 
-    def message(self):       
+    def message(self):
         s = 'steps: ' + str(self.steps)
         s += '  escape: ' + str(self.escape_count)
         s += '  cur: (' + str(self.z().real) + ', ' + str(self.z().imag) + ')'
         return s
 
 class InteractiveImageDisplay:
+    # state
+    width = None
+    height = None
+    # widgets
     image_on_canvas = None
-    cur_point_rect = None
+    canvas = None
+    # point iterator
     cur_point_state = None
-    
+    cur_point_rect = None
+    # resize state
+    _is_resizing = None
+    _master_dims_vs_image_dims = None
+    _last_master_dims = None
+
     def __init__(self, master, width, height):
         """
         Initialize the interactive image display for the Mandelbrot set.
@@ -78,14 +99,14 @@ class InteractiveImageDisplay:
         self.canvas = tk.Canvas(master, width=width, height=height)
         self.canvas.pack()
 
-        # draw image
-        self.reset_image()
-        
+        # load image
+        #self.reset_image()
+
         # Variables for drag selection
         self.start_x = None
         self.start_y = None
         self.rect = None
-        
+
         # Bind mouse events
         self.canvas.bind("<ButtonPress-1>", self.on_button_press)
         self.canvas.bind("<B1-Motion>", self.on_move_press)
@@ -105,31 +126,70 @@ class InteractiveImageDisplay:
                                                    fill='red',
                                                    font=('Arial', 10))
 
+        # Bind the configure event to handle window resizing
+        self.master.bind('<Configure>', self.on_resize)
+
     def set_initial_params(self):
         # Initial parameters for the Mandelbrot set
         initial_xmin, initial_xmax = -2.0, 1.0
         initial_ymin, initial_ymax = -1.5, 1.5
         maxiter = 128
         self.params = MandelbrotParams(initial_xmin, initial_xmax, initial_ymin, initial_ymax, self.width, self.height, maxiter)
+        #print(f'set_initial_params: params: {self.params.get_params()}')
 
-    def reset_image(self):
+    def reset_image(self, event=None):
         self.set_initial_params()
         self.mandelbrot = mandelbrot_set(self.params)
-        self.reload_image()        
+        self.reload_image()
 
     def reload_image(self):
         # Normalize and convert to image
         normalized = (self.mandelbrot / self.params.maxiter * 255).astype(np.uint8)
         normalized = np.rot90(normalized, k=1)
-        print(f'normalized.shape: {normalized.shape}')
+        #print(f'normalized.shape: {normalized.shape}')
         self.image = Image.fromarray(normalized, 'L')
         self.photo = ImageTk.PhotoImage(self.image)
+        self.canvas.config(width=self.width, height=self.height)
         if self.image_on_canvas is None:
             # create the image
             self.image_on_canvas = self.canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
         else:
             # Update the image on the canvas
-            self.canvas.itemconfig(self.image_on_canvas, image=self.photo)        
+            self.canvas.itemconfig(self.image_on_canvas, image=self.photo)
+        # Update status text position
+        self.canvas.coords(self.status_text, self.width - 10, self.height - 10)
+        self.canvas.tag_raise(self.status_text)
+        self._master_dims_vs_image_dims = (
+            self.master.winfo_width() - self.width,
+            self.master.winfo_height() - self.height,
+        )
+        #print(f'reload_image(): canvas after complete: {self.canvas.winfo_width()} {self.canvas.winfo_height()}')            
+        #print(f'reload_image(): master after complete: {self.master.winfo_width()} {self.master.winfo_height()}')
+        #print(f'reload_image: _master_dims_vs_image_dims: {self._master_dims_vs_image_dims}')
+
+    def on_resize(self, event):
+        #print(f'on_resize({event})')
+        if self._last_master_dims is None:
+            self._last_master_dims = (self.master.winfo_width(), self.master.winfo_height())
+            self.master.after(200, self.check_resize_finished, event)
+
+    def check_resize_finished(self, event):
+        #print(f'check_resize_finished(1): {event}')
+        #print(f'check_resize_finished(1): canvas: {self.canvas.winfo_width()} {self.canvas.winfo_height()}')
+        #print(f'check_resize_finished(1): master: {self.master.winfo_width()} {self.master.winfo_height()}')
+        master_dims = (self.master.winfo_width(), self.master.winfo_height())
+        if master_dims == self._last_master_dims:
+            # master dimensions are stable. update canvas size
+            if self._master_dims_vs_image_dims is not None:
+                self.width = master_dims[0] - self._master_dims_vs_image_dims[0]
+                self.height = master_dims[1] - self._master_dims_vs_image_dims[1]
+            #self.master.config(width=event.width, height=event.height)
+            self.reset_image()
+            self._last_master_dims = None
+        else:
+            self._last_master_dims = master_dims
+            # wait and then check again
+            self.master.after(500, self.check_resize_finished, event)
 
     def on_button_press(self, event):
         """Start of the drag selection"""
@@ -142,7 +202,7 @@ class InteractiveImageDisplay:
         """Update the rectangle as the mouse moves"""
         current_x = self.canvas.canvasx(event.x)
         current_y = self.canvas.canvasy(event.y)
-        
+
         # Update the rectangle's coordinates
         self.canvas.coords(self.rect, self.start_x, self.start_y, current_x, current_y)
 
@@ -150,11 +210,11 @@ class InteractiveImageDisplay:
         """End of the drag selection, recalculate Mandelbrot set"""
         current_x = self.canvas.canvasx(event.x)
         current_y = self.canvas.canvasy(event.y)
-        
+
         # Ensure start and end coordinates are in the correct order
         x1, x2 = min(self.start_x, current_x), max(self.start_x, current_x)
         y1, y2 = min(self.start_y, current_y), max(self.start_y, current_y)
-        print(f'on_button_release: x1: {x1}  x2: {x2}  y1: {y1}  y2: {y2}')
+        #print(f'on_button_release: x1: {x1}  x2: {x2}  y1: {y1}  y2: {y2}')
         if (x1 == x2) or (y1 == y2):
             # clear current rect
             self.canvas.delete(self.rect)
@@ -164,11 +224,11 @@ class InteractiveImageDisplay:
             return
 
         self.params.zoom_by_bbox(x1, x2, y1, y2)
-        
+
         # Recalculate the Mandelbrot set for the new region
         self.mandelbrot = mandelbrot_set(self.params)
         self.reload_image()
-                
+
         # Clear the selection rectangle
         self.canvas.delete(self.rect)
 
@@ -176,7 +236,7 @@ class InteractiveImageDisplay:
         """Update the rectangle as the mouse moves"""
         current_x = self.canvas.canvasx(event.x)
         current_y = self.canvas.canvasy(event.y)
-        
+
         # Update the rectangle's coordinates
         self.canvas.coords(self.rect, self.start_x, self.start_y, current_x, current_y)
 
@@ -220,18 +280,18 @@ class InteractiveImageDisplay:
         Updates self.params.maxiter with the new value if provided.
         """
         # Ask for a new maxiter value
-        new_maxiter = simpledialog.askinteger("Set Max Iterations", 
-                                              "Enter new maxiter value:", 
+        new_maxiter = simpledialog.askinteger("Set Max Iterations",
+                                              "Enter new maxiter value:",
                                               initialvalue=self.params.maxiter,
                                               minvalue=1,  # Ensure a positive integer
                                               parent=self.master)
-        
+
         # Check if a value was entered and update if so
         if new_maxiter is not None:
             self.params.maxiter = new_maxiter
             print(f"Max iterations set to: {self.params.maxiter}")
             self.mandelbrot = mandelbrot_set(self.params)
-            self.reload_image()        
+            self.reload_image()
 
     # If you want to trigger this dialog from a button or menu
     def add_set_maxiter_button(self):
@@ -245,10 +305,11 @@ class InteractiveImageDisplay:
         # ensure the status dialog is updated immediately
         self.master.update_idletasks()
 
-            
+
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("Interactive Mandelbrot Set Display")
+    root.resizable(True, True)
     display = InteractiveImageDisplay(root, 800, 600)
     display.add_set_maxiter_button()
     display.update_status('Ready to explore the Mandelbrot set')
