@@ -100,8 +100,8 @@ class InteractiveImageDisplay:
         self.canvas = tk.Canvas(master, width=width, height=height)
         self.canvas.pack()
 
-        # load image
-        #self.reset_image()
+        # init params
+        self.set_initial_params()
 
         # Variables for drag selection
         self.start_x = None
@@ -136,18 +136,23 @@ class InteractiveImageDisplay:
         initial_ymin, initial_ymax = -1.5, 1.5
         maxiter = 128
         self.params = MandelbrotParams(initial_xmin, initial_xmax, initial_ymin, initial_ymax, self.width, self.height, maxiter)
-        #print(f'set_initial_params: params: {self.params.get_params()}')
 
     def reset_image(self, event=None):
         self.set_initial_params()
-        self.mandelbrot = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
         self.reload_image()
 
     def reload_image(self):
         # Normalize and convert to image
-        normalized = (self.mandelbrot / self.params.maxiter * 255).astype(np.uint8)
+        mandelbrot = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
+        normalized = (mandelbrot / self.params.maxiter * 255).astype(np.uint8)
         normalized = np.rot90(normalized, k=1)
         #print(f'normalized.shape: {normalized.shape}')
+        # clear cur_point
+        self.cur_point_state = None  # remove point
+        if self.cur_point_rect:
+            self.canvas.delete(self.cur_point_rect)
+            self.cur_point_rect = None
+        # draw image
         self.image = Image.fromarray(normalized, 'L')
         self.photo = ImageTk.PhotoImage(self.image)
         self.canvas.config(width=self.width, height=self.height)
@@ -184,8 +189,11 @@ class InteractiveImageDisplay:
             if self._master_dims_vs_image_dims is not None:
                 self.width = master_dims[0] - self._master_dims_vs_image_dims[0]
                 self.height = master_dims[1] - self._master_dims_vs_image_dims[1]
+                self.params.width = self.width
+                self.params.height = self.height
+                self.params.zoom_by_bbox(0, self.width, 0, self.height)  # reset complex plane bbox
             #self.master.config(width=event.width, height=event.height)
-            self.reset_image()
+            self.reload_image()
             self._last_master_dims = None
         else:
             self._last_master_dims = master_dims
@@ -220,14 +228,13 @@ class InteractiveImageDisplay:
             # clear current rect
             self.canvas.delete(self.rect)
             xpos, ypos = self.params.image_to_complex(x1, y1)
-            self.cur_point_state = CurPointState(xpos, ypos)
+            self.cur_point_state = CurPointState(xpos, ypos, maxiter=self.params.maxiter)
             self.show_cur_point()
             return
 
         self.params.zoom_by_bbox(x1, x2, y1, y2)
 
         # Recalculate the Mandelbrot set for the new region
-        self.mandelbrot = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
         self.reload_image()
 
         # Clear the selection rectangle
@@ -291,7 +298,6 @@ class InteractiveImageDisplay:
         if new_maxiter is not None:
             self.params.maxiter = new_maxiter
             print(f"Max iterations set to: {self.params.maxiter}")
-            self.mandelbrot = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
             self.reload_image()
 
     # If you want to trigger this dialog from a button or menu
