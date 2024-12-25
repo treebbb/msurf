@@ -1,5 +1,5 @@
 from copy import copy
-from MandelbrotFuncs import mandelbrot_set
+from MandelbrotFuncs import MandelbrotFuncs
 from MandelbrotParams import MandelbrotParams
 from PIL import Image, ImageTk
 import tkinter as tk
@@ -94,6 +94,7 @@ class InteractiveImageDisplay:
         self.master = master
         self.width = width
         self.height = height
+        self.mandelbrot_funcs = MandelbrotFuncs()
 
         # Create canvas
         self.canvas = tk.Canvas(master, width=width, height=height)
@@ -139,7 +140,7 @@ class InteractiveImageDisplay:
 
     def reset_image(self, event=None):
         self.set_initial_params()
-        self.mandelbrot = mandelbrot_set(self.params)
+        self.mandelbrot = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
         self.reload_image()
 
     def reload_image(self):
@@ -226,7 +227,7 @@ class InteractiveImageDisplay:
         self.params.zoom_by_bbox(x1, x2, y1, y2)
 
         # Recalculate the Mandelbrot set for the new region
-        self.mandelbrot = mandelbrot_set(self.params)
+        self.mandelbrot = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
         self.reload_image()
 
         # Clear the selection rectangle
@@ -290,7 +291,7 @@ class InteractiveImageDisplay:
         if new_maxiter is not None:
             self.params.maxiter = new_maxiter
             print(f"Max iterations set to: {self.params.maxiter}")
-            self.mandelbrot = mandelbrot_set(self.params)
+            self.mandelbrot = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
             self.reload_image()
 
     # If you want to trigger this dialog from a button or menu
