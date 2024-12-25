@@ -11,45 +11,51 @@ class CurPointState:
     orig = 0 + 0j
     steps = 0
     history = None
-    self._count = None  # cache for calc_escape
-    def __init__(self, xpos, ypos):
+    escape_count = None  # cache for calc_escape
+    maxiter = 256
+    def __init__(self, xpos, ypos, maxiter=256):
         self.orig = xpos + ypos * 1j
-        self.history = [self.orig]
+        self.maxiter = maxiter
+        self.history = []
+        self._calc_escape()
 
     def go_left(self):
         '''
         pop off history (go back to previous iter)
         '''
         if self.steps > 0:
-            self.history.pop()
             self.steps -= 1
 
     def go_right(self):
         '''
         calc next iter
         '''
-        c = self.orig
-        z = self.z()
-        z = z * z + c
-        self.steps += 1
-        self.history.append(z)
+        if self.steps < self.escape_count:
+            self.steps += 1
 
     def z(self):
-        return self.history[-1]
+        return self.history[self.steps]
 
-    def calc_escape(self, maxiter):
+    def _calc_escape(self):
         '''
         return number of reps for escape (limited by maxiter)
         '''
-        if self._count is None:
-            c = self.orig
-            z = c
-            self._count = 0
-            while abs(z) < 2 and count < maxiter:
-                z = z * z + c
-                self._count += 1
-        return self._count
+        self.escape_count = 0
+        c = self.orig
+        z = c
+        self.history.append(z)
+        for i in range(self.maxiter):
+            z = z * z + c
+            if abs(z) > 2.0:
+                break
+            self.history.append(z)
+            self.escape_count += 1
 
+    def message(self):       
+        s = 'steps: ' + str(self.steps)
+        s += '  escape: ' + str(self.escape_count)
+        s += '  cur: (' + str(self.z().real) + ', ' + str(self.z().imag) + ')'
+        return s
 
 class InteractiveImageDisplay:
     image_on_canvas = None
@@ -88,6 +94,7 @@ class InteractiveImageDisplay:
         # Bind key events
         self.master.bind('<Command-r>', self.key_handler)
         self.master.bind("<Right>", self.key_handler)
+        self.master.bind("<Left>", self.key_handler)
 
         # status dialog
         #self.status_dialog = tk.Label(self.master, text="", bd=1, relief=tk.SUNKEN, anchor=tk.W, height=2, width=50, bg='black', fg='red')
@@ -180,7 +187,7 @@ class InteractiveImageDisplay:
 
         :param event: Tkinter event object containing key press information
         """
-        print(f'key_handler: event: {event}  event.state: {event.state}')
+        # print(f'key_handler: event: {event}  event.state: {event.state}')
         # Check if the pressed key is 'r' and if the Command key (on Mac) or Control key (on Windows/Linux) is pressed
         if event.keysym.lower() == 'r' and (event.state & 0x8):  # 0x10 is the bitmask for Command on Mac
             # You can implement the reset functionality here
@@ -197,13 +204,15 @@ class InteractiveImageDisplay:
     def show_cur_point(self):
         z = self.cur_point_state.z()
         x, y = self.params.complex_to_image(z.real, z.imag)
-        print(f'iter_cur_point: orig=({z})  new=({x}, {y})')
-        if self.cur_point_rect is None:
+        message = self.cur_point_state.message()
+        # print(f'iter_cur_point: orig=({z})  new=({x}, {y})')
+        if x < 0 or x >= self.params.width or y < 0 or y >= self.params.height:
+            message = 'OUT-OF-BOUNDS  ' + message
+        elif self.cur_point_rect is None:
             self.cur_point_rect = self.canvas.create_rectangle(x, y, x+3, y+3, fill='blue', outline='blue')
         else:
             self.canvas.coords(self.cur_point_rect, x, y, x+3, y+3)
-        self.update_status(f'steps: {self.cur_point_state.steps}  Z={self.cur_point_state.cur}')
-        
+        self.update_status(message)
 
     def set_maxiter_dialog(self):
         """
