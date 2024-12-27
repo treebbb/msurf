@@ -142,18 +142,19 @@ class InteractiveImageDisplay:
         self.reload_image()
 
     def reload_image(self):
-        # Normalize and convert to image
-        mandelbrot = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
-        normalized = (mandelbrot / self.params.maxiter * 255).astype(np.uint8)
-        normalized = np.rot90(normalized, k=1)
-        #print(f'normalized.shape: {normalized.shape}')
         # clear cur_point
         self.cur_point_state = None  # remove point
         if self.cur_point_rect:
             self.canvas.delete(self.cur_point_rect)
             self.cur_point_rect = None
+        # Generate, normalize and convert to image
+        mandelbrot = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
+        print(f'MB shape: {mandelbrot.shape}')
+        normalized = np.rot90(mandelbrot, k=1)
         # draw image
-        self.image = Image.fromarray(normalized, 'L')
+        self.image = Image.fromarray(normalized, 'RGB')
+        #normalized = np.dstack((normalized, normalized/2, normalized/2))
+        #self.image = Image.fromarray(normalized, 'RGB')
         self.photo = ImageTk.PhotoImage(self.image)
         self.canvas.config(width=self.width, height=self.height)
         if self.image_on_canvas is None:
