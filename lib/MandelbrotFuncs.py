@@ -37,6 +37,7 @@ class MandelbrotFuncs:
         # OpenCL kernel code
         kernel_src = """
         __kernel void mandelbrot(__global const float *c_real, __global const float *c_imag, __global char *output,
+                                 __global char *palette,
                                 const int maxiter, const float horizon, const int width, const int height) {
             const int x = get_global_id(0);
             const int y = get_global_id(1);
@@ -58,46 +59,21 @@ class MandelbrotFuncs:
             }
             // 8-bit rgb output
             int o_ix = (y * width + x) * 3;
-            int value = (i * 255) / maxiter;
+            //int value = (i * 255) / maxiter;
             if (i == maxiter) {
                 output[o_ix] = 0;
                 output[o_ix + 1] = 0;
                 output[o_ix + 2] = 0;
             } else {
-                output[o_ix] = value;
-                output[o_ix + 1] = value;
-                output[o_ix + 2] = value;
+                output[o_ix] = palette[i*3 + 0];
+                output[o_ix + 1] = palette[i*3 + 1];
+                output[o_ix + 2] = palette[i*3 + 2];
             }
         }
         """
 
         # Compile the kernel
         self.prg = cl.Program(self.ctx, kernel_src).build()
-
-
-    def iter_to_color(self, maxiter):
-        '''
-        returns an array for the color,size of each iteration
-        [((blue, green, red), pixel_size_of_dot) ... ]
-        '''
-        num_revolutions = 5  # repeat the color wheel this many times over maxiter
-        total_divs = maxiter // num_revolutions  # number of divisions within color wheel
-        red_shift = 0 # 0 degrees
-        green_shift = 2 * pi / 3  # 120 degrees
-        blue_shift = 4 * pi / 3  # 240 degrees
-        def rgb_for_div_index(div_index):
-            rad = 2 * pi * (div_index / total_divs)
-            red_index = max(0, int(cos(rad + red_shift) * 255))
-            green_index = max(0, int(cos(rad + green_shift) * 255))
-            blue_index = max(0, int(cos(rad + blue_shift) * 255))
-            return (red_index, green_index, blue_index)
-        #print('{:.2f}  {}  {}'.format(rad, (blue_index, green_index, red_index), size))
-        def color_size_for_div_index(n):
-            rgb = rgb_for_div_index(n)
-            div_count = n // total_divs  # which revolution we're on
-            size = num_revolutions - (div_count)  # shrink by one pixel each rotation
-            return (rgb, size)
-        return [color_size_for_div_index(n) for n in range(maxiter)]
 
     # export PYOPENCL_CTX='0:1'
     def mandelbrot_set_opencl(self, params: MandelbrotParams, horizon=2.0):
@@ -109,6 +85,14 @@ class MandelbrotFuncs:
         if maxiter >= MAX_MAXITER:
             print(f'WARNING: maxiter: {maxiter} greater than limit {MAX_MAXITER}. reducing to limit')
             maxiter = MAX_MAXITER
+        # cache the mandlebrot array so we don't have to reallocate it unless width/height changes
+        mbc = params._mandelbrot_cache
+        if mbc is None or mbc[0] != xn or mbc[1] != yn:
+            mandelbrot = np.empty((xn, yn, 3), dtype=np.uint8)
+            params._mandelbrot_cache = (xn, yn, mandelbrot)
+        else:
+            mandelbrot = mbc[2]
+
         # Create OpenCL context and command queue
 
         # Prepare data
@@ -117,20 +101,20 @@ class MandelbrotFuncs:
         c = real[:, np.newaxis] + imaginary[np.newaxis, :] * 1j
         c_real = np.real(c).astype(np.float32)
         c_imag = np.imag(c).astype(np.float32)
+        palette = params.iter_to_color()  # shape=(maxiter,3) dtype=np.uint8
 
         # Allocate memory on the GPU
         c_real_buf = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=c_real)
         c_imag_buf = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=c_imag)
         output_buf = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, c_real.nbytes * 3)
+        c_palette = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=palette)
 
 
         # Execute the kernel
-        self.prg.mandelbrot(self.queue, c_real.shape, None, c_real_buf, c_imag_buf, output_buf,
+        self.prg.mandelbrot(self.queue, c_real.shape, None, c_real_buf, c_imag_buf, output_buf, c_palette,
                        np.int32(maxiter), np.float32(horizon), np.int32(xn), np.int32(yn))
 
         # Read results back to host
-        #mandelbrot = np.empty_like(c_real, dtype=np.int32)
-        mandelbrot = np.empty((xn, yn, 3), dtype=np.uint8)
         print(f'mb.shape: {mandelbrot.shape}')
         cl.enqueue_copy(self.queue, mandelbrot, output_buf)
         # Cleanup

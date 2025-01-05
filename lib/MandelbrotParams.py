@@ -1,4 +1,11 @@
+import numpy as np
+from math import pi, cos, log
+
+
 class MandelbrotParams:
+    # used by mandelbrot_set_opencl. (width, height, np.array)
+    _mandelbrot_cache = None
+
     def __init__(self, xmin, xmax, ymin, ymax, width, height, maxiter):
         """
         Initialize the MandelbrotParams with the bounding box in the complex plane,
@@ -47,6 +54,18 @@ class MandelbrotParams:
         self.ymin = float(new_ymin)
         self.ymax = float(new_ymax)
 
+    def zoom(self, zoomval=1.0):
+        xwidth = self.xmax - self.xmin
+        yheight = self.ymax - self.ymin
+        xcenter = self.xmin + xwidth / 2
+        ycenter = self.ymin + yheight / 2
+        new_xwidth = xwidth * zoomval
+        new_yheight = yheight * zoomval
+        self.xmin = xcenter - new_xwidth / 2
+        self.xmax = xcenter + new_xwidth / 2
+        self.ymin = ycenter - new_yheight / 2
+        self.ymax = ycenter + new_yheight / 2
+
     def zoom_by_bbox(self, x1, x2, y1, y2):
         """
         Zoom into the Mandelbrot based on a bounding box around the pixel image
@@ -93,11 +112,34 @@ class MandelbrotParams:
         y1 = self.height - int((ypos - self.ymin) / yheight * self.height)
         return x1, y1
 
+    def iter_to_color(self):
+        '''
+        returns an array for the color,size of each iteration
+        [((blue, green, red), pixel_size_of_dot) ... ]
+        '''
+        maxiter = self.maxiter
+        num_revolutions = 0.5  # repeat the color wheel this many times over maxiter
+        rad_inc = 2 * pi / (maxiter / num_revolutions)
+        red_shift = 0 # 0 degrees
+        green_shift = 2 * pi / 3  # 120 degrees
+        blue_shift = 4 * pi / 3  # 240 degrees
+        palette = np.zeros((maxiter, 3), dtype=np.uint8)
+        rad = 0
+        for i in range(maxiter):
+            r = int(log(i + 1) / log(maxiter + 1) * 255)
+            g = r
+            b = 0
+            palette[i][0] = r
+            palette[i][1] = g
+            palette[i][2] = b
+            rad += rad_inc
+        return palette
+
     def get_params(self):
         """
         Get all parameters in a tuple format suitable for passing to the mandelbrot_set function.
-        
+
         :return: Tuple of (xmin, xmax, ymin, ymax, width, height, maxiter)
         """
         return (self.xmin, self.xmax, self.ymin, self.ymax, self.width, self.height, self.maxiter)
-    
+

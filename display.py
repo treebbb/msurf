@@ -1,11 +1,16 @@
 from copy import copy
+import cv2
+import itertools
 from MandelbrotFuncs import MandelbrotFuncs
 from MandelbrotParams import MandelbrotParams
+import math
+import numpy as np
 from PIL import Image, ImageTk
+from scipy.ndimage import label, find_objects
 import tkinter as tk
 from tkinter import filedialog, simpledialog
-import numpy as np
 
+CLEAR_EVENT = 'CLEAR_EVENT'
 
 class CurPointState:
     '''
@@ -68,6 +73,200 @@ class CurPointState:
         s += '  cur: (' + str(self.z().real) + ', ' + str(self.z().imag) + ')'
         return s
 
+class ImageProcessor:
+    def find_largest_black_region(self, image):
+        # Detect black regions
+        black_pixels = np.all(image == [0, 0, 0], axis=-1)
+
+        # Label connected components
+        labeled_array, num_features = label(black_pixels)
+
+        # Find bounding boxes of all connected components
+        objects_slices = find_objects(labeled_array)
+
+        # Find the largest black region
+        max_area = 0
+        largest_region_slice = None
+        for region_slice in objects_slices:
+            area = (region_slice[0].stop - region_slice[0].start) * (region_slice[1].stop - region_slice[1].start)
+            if area > max_area:
+                max_area = area
+                largest_region_slice = region_slice
+
+        if largest_region_slice is None:
+            return None  # No black region found
+
+        # Calculate bounding box coordinates
+        y1, x1 = largest_region_slice[0].start, largest_region_slice[1].start
+        y2, x2 = largest_region_slice[0].stop, largest_region_slice[1].stop
+        largest_black_region = black_pixels[y1:y2, x1:x2]
+
+        return largest_black_region, (x1, y1, x2, y2)
+
+    def find_min_area_rect(self, image):
+        '''
+        input is a numpy array of booleans indicating black pixels (from find_largest_black_region)
+        return 4 points defining a rotated boundingbox around the image
+        '''
+
+        #gray_image = np.average(image, axis=-1).astype(np.uint8)
+        #contours, _ = cv2.findContours(gray_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(image.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if not contours:
+            return None  # No contours found
+
+        # Find the contour with the largest area
+        largest_contour = max(contours, key=cv2.contourArea)
+
+        # Find the minimum area rectangle
+        min_area_rect = cv2.minAreaRect(largest_contour)
+        print(f'min_area_rect: {min_area_rect}')
+
+        # Get the bounding box points
+        box = cv2.boxPoints(min_area_rect)
+        box = np.int0(box)
+
+        return box
+
+    def find_black_shape_center(self, black_pixels):
+        '''
+        Find the center of a black shape in an RGB image by averaging all black pixel coordinates
+
+        Args:
+            image: numpy array with shape (height, width) where the value is True if black pixel, False otherwise
+
+        Returns:
+            tuple (x, y) representing the center coordinates of the black shape
+            or None if no black pixels are found
+        '''
+
+        # Get the coordinates of black pixels
+        height, width = black_pixels.shape
+        y_coords, x_coords = np.where(black_pixels)
+
+        # Check if any black pixels were found
+        if len(x_coords) == 0:
+            return None
+
+        # Calculate the center by averaging x and y coordinates
+        center_x = int(np.mean(x_coords))
+        center_y = int(np.mean(y_coords))
+
+        # Create arrays of all black pixel coordinates
+        points = np.column_stack((x_coords, y_coords))
+        center_point = np.array([center_x, center_y])
+
+        # Calculate distances from center to all black pixels
+        # Using broadcasting to subtract center from all points
+        distances = np.sum((points - center_point) ** 2, axis=1)
+
+        # Find the index of the maximum distance
+        furthest_idx = np.argmax(distances)
+
+        # Get the coordinates of the furthest point
+        ax = x_coords[furthest_idx]
+        ay = y_coords[furthest_idx]
+        print(f'ax: {ax}  ay: {ay}')
+        max_distance = math.sqrt(distances[furthest_idx])
+
+        # Calculate the angle of point1 from vertical
+        dx = float(center_x - ax)
+        dy = float(center_y - ay)
+        angle_rad = np.arctan2(dx, -dy)
+
+        # Normalize the vector
+        length = np.sqrt(dx*dx + dy*dy)
+        print(f'  A: ({ax}, {ay})  center: ({center_x}, {center_y})  length: {length}')
+        if length == 0:
+            return (center_x, center_y, ax, ay, center_x, center_y)
+
+        dx = dx / length
+        dy = dy / length
+        print(f' dx: {dx}  dy: {dy}')
+        # Start from point B
+        bx, by = center_x, center_y
+        exact_x, exact_y = float(bx), float(by)
+        furthest_point = (int(bx), int(by))
+        # Continue until we hit image boundaries
+        while True:
+            # Update exact position
+            exact_x += dx
+            exact_y += dy
+
+            # Convert to integer coordinates for array indexing
+            x = int(round(exact_x))
+            y = int(round(exact_y))
+            print(f'  x: {x}  y: {y}')
+
+            # Check if we're outside image bounds
+            if x < 0 or x >= width or y < 0 or y >= height:
+                break
+
+            # Check if color matches
+            if black_pixels[y, x]:
+                bx, by = x, y
+            else:
+                # stop if we hit non-black
+                break
+
+        return (center_x, center_y, ax, ay, bx, by)
+
+
+    def find_furthest_color_point(image_array, ax, ay, bx, by, target_color):
+        """
+        Find the furthest point from B along the vector AB that matches target_color
+
+        Args:
+            image_array: 3D numpy array (height, width, 3) of RGB values
+            point_a: tuple (x,y) of first point
+            point_b: tuple (x,y) of second point
+            target_color: tuple (R,G,B) of color to match
+
+        Returns:
+            tuple (x,y) of furthest matching point, or point_b if no match found
+        """
+        height, width = image_array.shape[:2]
+
+        # Calculate vector direction
+        dx = float(bx - ax)
+        dy = float(by - ay)
+
+        # Normalize the vector
+        length = np.sqrt(dx*dx + dy*dy)
+        if length == 0:
+            return point_b
+
+        dx = dx / length
+        dy = dy / length
+
+        # Start from point B
+        exact_x, exact_y = bx, by
+        furthest_point = (int(bx), int(by))
+
+        # Continue until we hit image boundaries
+        while True:
+            # Update exact position
+            exact_x += dx
+            exact_y += dy
+
+            # Convert to integer coordinates for array indexing
+            x = int(round(exact_x))
+            y = int(round(exact_y))
+
+            # Check if we're outside image bounds
+            if x < 0 or x >= width or y < 0 or y >= height:
+                break
+
+            # Check if color matches
+            if np.array_equal(image_array[y, x], target_color):
+                furthest_point = (x, y)
+            else:
+                break
+
+        return furthest_point
+
+
 class InteractiveImageDisplay:
     # state
     width = None
@@ -82,6 +281,12 @@ class InteractiveImageDisplay:
     _is_resizing = None
     _master_dims_vs_image_dims = None
     _last_master_dims = None
+    # color palette
+    showing_palette = False
+    palette_window = None
+    # bounding box
+    black_bounding_box_axis_line = None
+    black_bounding_box_center_point = None
 
     def __init__(self, master, width, height):
         """
@@ -117,6 +322,8 @@ class InteractiveImageDisplay:
         self.master.bind('<Command-r>', self.key_handler)
         self.master.bind("<Right>", self.key_handler)
         self.master.bind("<Left>", self.key_handler)
+        self.master.bind("<Command-equal>", self.key_handler)
+        self.master.bind("<Command-minus>", self.key_handler)
 
         # status dialog
         #self.status_dialog = tk.Label(self.master, text="", bd=1, relief=tk.SUNKEN, anchor=tk.W, height=2, width=50, bg='black', fg='red')
@@ -126,9 +333,27 @@ class InteractiveImageDisplay:
                                                    text='',
                                                    fill='red',
                                                    font=('Arial', 10))
+        # display buttons side-by-side
+        self.button_frame = tk.Frame(master)
+        self.button_frame.pack(fill=tk.X)  # Fill horizontally
+
+        # Create a button to toggle the color palette display
+        self.color_palette_button = tk.Button(self.button_frame, text="Show Color Palette", command=self.toggle_color_palette)
+        self.color_palette_button.pack(side=tk.LEFT, padx=(0, 5))  # left side with some padding
+
+        # Add a button to the display to open the maxiter setting dialog
+        button = tk.Button(self.button_frame, text="Set Max Iterations", command=self.set_maxiter_dialog)
+        button.pack(side=tk.LEFT)
+
+        # Add a button to draw bounding box around largest black region
+        button = tk.Button(self.button_frame, text="Draw Bounding Box", command=self.toggle_draw_bounding_box)
+        button.pack(side=tk.LEFT)
 
         # Bind the configure event to handle window resizing
         self.master.bind('<Configure>', self.on_resize)
+
+        # initialize Image Processor
+        self.image_processor = ImageProcessor()
 
     def set_initial_params(self):
         # Initial parameters for the Mandelbrot set
@@ -144,17 +369,16 @@ class InteractiveImageDisplay:
     def reload_image(self):
         # clear cur_point
         self.cur_point_state = None  # remove point
+        self.toggle_draw_bounding_box(event=CLEAR_EVENT)
         if self.cur_point_rect:
             self.canvas.delete(self.cur_point_rect)
             self.cur_point_rect = None
         # Generate, normalize and convert to image
         mandelbrot = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
         print(f'MB shape: {mandelbrot.shape}')
-        normalized = np.rot90(mandelbrot, k=1)
+        self.normalized_mandelbrot = normalized = np.rot90(mandelbrot, k=1)
         # draw image
         self.image = Image.fromarray(normalized, 'RGB')
-        #normalized = np.dstack((normalized, normalized/2, normalized/2))
-        #self.image = Image.fromarray(normalized, 'RGB')
         self.photo = ImageTk.PhotoImage(self.image)
         self.canvas.config(width=self.width, height=self.height)
         if self.image_on_canvas is None:
@@ -170,7 +394,7 @@ class InteractiveImageDisplay:
             self.master.winfo_width() - self.width,
             self.master.winfo_height() - self.height,
         )
-        #print(f'reload_image(): canvas after complete: {self.canvas.winfo_width()} {self.canvas.winfo_height()}')            
+        #print(f'reload_image(): canvas after complete: {self.canvas.winfo_width()} {self.canvas.winfo_height()}')
         #print(f'reload_image(): master after complete: {self.master.winfo_width()} {self.master.winfo_height()}')
         #print(f'reload_image: _master_dims_vs_image_dims: {self._master_dims_vs_image_dims}')
 
@@ -269,6 +493,12 @@ class InteractiveImageDisplay:
         elif event.keysym == 'Left':
             self.cur_point_state.go_left()
             self.show_cur_point()
+        elif event.keysym == 'equal':  # !!! also check Command bitmask
+            self.params.zoom(0.80)
+            self.reload_image()
+        elif event.keysym == 'minus':
+            self.params.zoom(1.25)
+            self.reload_image()
 
     def show_cur_point(self):
         z = self.cur_point_state.z()
@@ -301,24 +531,88 @@ class InteractiveImageDisplay:
             print(f"Max iterations set to: {self.params.maxiter}")
             self.reload_image()
 
-    # If you want to trigger this dialog from a button or menu
-    def add_set_maxiter_button(self):
-        """Add a button to the display to open the maxiter setting dialog."""
-        button = tk.Button(self.master, text="Set Max Iterations", command=self.set_maxiter_dialog)
-        button.pack()
-
     def update_status(self, message):
         #self.status_dialog.config(text=message)
         self.canvas.itemconfig(self.status_text, text=message)
         # ensure the status dialog is updated immediately
         self.master.update_idletasks()
 
+    def toggle_color_palette(self):
+        image_height = 400
+        if not self.showing_palette:
+            # Generate the color palette
+            color_palette = self.params.iter_to_color()
+            # flip top-to-bottom
+            color_palette = np.flipud(color_palette)
+            # Create an array of indices to broadcast along the new axis
+            new_axis = np.arange(image_height)[:, np.newaxis]
+            # Use broadcasting to expand the array
+            expanded_array = color_palette[:, np.newaxis, :] + np.zeros((1, image_height, 1), dtype=color_palette.dtype)
+
+            print(f'color_palette.shape: {color_palette.shape}')
+            print(f'expanded_array.shape: {expanded_array.shape}')
+
+            # Convert numpy array to PIL Image
+            img = Image.fromarray(expanded_array, 'RGB')
+
+            # Resize the image for visibility (optional, adjust as needed)
+            # img = img.resize((400, self.params.maxiter), Image.NEAREST)
+
+            # Convert PIL Image to Tkinter PhotoImage
+            palette_image = ImageTk.PhotoImage(img)\
+
+            # Create a new window for the palette
+            self.palette_window = tk.Toplevel(self.master)
+            self.palette_window.title("Color Palette")
+
+            # Display the image in the new window
+            self.palette_label = tk.Label(self.palette_window, image=palette_image)
+            self.palette_label.pack()
+
+            # Store reference to prevent garbage collection
+            self.palette_label.image = palette_image
+
+            # Update button text
+            self.color_palette_button.config(text="Hide Color Palette")
+            self.showing_palette = True
+        else:
+            # Close the palette window
+            if self.palette_window:
+                self.palette_window.destroy()
+                self.palette_window = None
+            self.color_palette_button.config(text="Show Color Palette")
+            self.showing_palette = False
+
+    def toggle_draw_bounding_box(self, event=None):
+        if event != CLEAR_EVENT and self.black_bounding_box_axis_line is None:
+            largest_black_region, (x1, y1, x2, y2) = self.image_processor.find_largest_black_region(self.normalized_mandelbrot)
+            center_x, center_y, ax, ay, bx, by = self.image_processor.find_black_shape_center(largest_black_region)
+            # add offset back
+            center_x += x1
+            center_y += y1
+            ax += x1
+            bx += x1
+            ay += y1
+            by += y1
+            print(f'A: ({ax}, {ay})  center: ({center_x}, {center_y})  B: ({bx}, {by})')
+
+            w = x2 - x1
+            h = y2 - y1
+            print(f'toggle_draw_bounding_box: ({x1}, {y1}, {x2}, {y2}) w={w}  h={h}')
+            self.black_bounding_box_axis_line = self.canvas.create_line(ax, ay, bx, by, fill='yellow', width=3)
+            self.black_bounding_box_center_point = self.canvas.create_rectangle(center_x - 2, center_y - 2, center_x + 2, center_y + 2, fill='red')
+        else:
+            if self.black_bounding_box_axis_line:
+                self.canvas.delete(self.black_bounding_box_axis_line)
+                self.black_bounding_box_axis_line = None
+            if self.black_bounding_box_center_point:
+                self.canvas.delete(self.black_bounding_box_center_point)
+                self.black_bounding_box_center_point = None
 
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("Interactive Mandelbrot Set Display")
     root.resizable(True, True)
     display = InteractiveImageDisplay(root, 800, 600)
-    display.add_set_maxiter_button()
     display.update_status('Ready to explore the Mandelbrot set')
     root.mainloop()
