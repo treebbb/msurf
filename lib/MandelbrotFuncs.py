@@ -1,5 +1,6 @@
 from MandelbrotParams import MandelbrotParams
 import numpy as np
+import os
 import pyopencl as cl
 
 
@@ -36,51 +37,9 @@ class MandelbrotFuncs:
         self.ctx = cl.create_some_context()
         self.queue = cl.CommandQueue(self.ctx)
         # OpenCL kernel code
-        kernel_src = """
-        __kernel void mandelbrot(__global char *output,
-                                 __global char *palette,
-                                 const int maxiter, const float horizon, const int width, const int height,
-                                 const float xmin, const float ymin, const float step_size) {
-            const int x = get_global_id(0);
-            const int y = get_global_id(1);
-
-            const float c_real = xmin + step_size * x;
-            const float c_imag = ymin + step_size * y;
-
-            float z_real = 0.0f;
-            float z_imag = 0.0f;
-            float z_real_squared = 0.0f;
-            float z_imag_squared = 0.0f;
-            int i;
-
-            for(i = 0; i < maxiter; i++) {
-                if(z_real_squared + z_imag_squared > horizon * horizon) break;
-
-                z_imag = 2.0f * z_real * z_imag + c_imag;
-                z_real = z_real_squared - z_imag_squared + c_real;
-
-                z_real_squared = z_real * z_real;
-                z_imag_squared = z_imag * z_imag;
-            }
-            // 8-bit rgb output
-            // the output buffer is displayed buffer[0] = top
-            // so we use (height - y - 1) for indexing
-            int row = height - y - 1;
-            int row_width = width * 3;  // 3 channels, one byte each
-            int col_pos = x * 3;
-            int o_ix = row * row_width + col_pos;
-            //int value = (i * 255) / maxiter;
-            if (i == maxiter) {
-                output[o_ix] = 0;
-                output[o_ix + 1] = 0;
-                output[o_ix + 2] = 0;
-            } else {
-                output[o_ix] = palette[i*3 + 0];
-                output[o_ix + 1] = palette[i*3 + 1];
-                output[o_ix + 2] = palette[i*3 + 2];
-            }
-        }
-        """
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        kernel_code_path = os.path.join(dir_path, 'mandelbrot_kernel.cl')
+        kernel_src = open(kernel_code_path, 'r').read()
 
         # Compile the kernel
         self.prg = cl.Program(self.ctx, kernel_src).build()
