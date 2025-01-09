@@ -394,13 +394,13 @@ class InteractiveImageDisplay:
             self.cur_point_rect = None
         # show dimensions in message
         zoom_factor = Decimal(3.0 / (self.params.xmax - self.params.xmin))
-        self.update_status(f'Zoom: {zoom_factor:.2e}')
+        self.update_status(f'Zoom: {zoom_factor:.2e}  MaxIter: {self.params.maxiter}')
         # Generate, normalize and convert to image
-        mandelbrot = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
-        print(f'MB shape: {mandelbrot.shape}')
-        self.normalized_mandelbrot = normalized = np.rot90(mandelbrot, k=1)
+        self.mandelbrot_array = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
+        print(f'MB shape: {self.mandelbrot_array.shape}')
+        #self.normalized_mandelbrot = normalized = np.rot90(mandelbrot, k=1)
         # draw image
-        self.image = Image.fromarray(normalized, 'RGB')
+        self.image = Image.fromarray(self.mandelbrot_array, 'RGB')
         self.photo = ImageTk.PhotoImage(self.image)
         self.canvas.config(width=self.width, height=self.height)
         if self.image_on_canvas is None:
@@ -615,7 +615,7 @@ class InteractiveImageDisplay:
     def toggle_draw_bounding_box(self, event=None):
         self.clear_debug_points()
         if event != CLEAR_EVENT and self.black_bounding_box_axis_line is None:
-            largest_black_region, (x1, y1, x2, y2) = self.image_processor.find_largest_black_region(self.normalized_mandelbrot)
+            largest_black_region, (x1, y1, x2, y2) = self.image_processor.find_largest_black_region(self.mandelbrot_array)
             (ax, ay, bx, by), debug_points = self.image_processor.find_black_shape_center(largest_black_region)
             for (x, y, color) in debug_points:
                 x += x1
