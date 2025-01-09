@@ -1,5 +1,6 @@
 from copy import copy
 import cv2
+from decimal import Decimal
 import itertools
 from MandelbrotFuncs import MandelbrotFuncs
 from MandelbrotParams import MandelbrotParams
@@ -129,6 +130,22 @@ class ImageProcessor:
 
         return box
 
+    def furthest_black_point(self, black_pixels, x, y, use_min=False):
+        height, width = black_pixels.shape
+        y_coords, x_coords = np.where(black_pixels)
+        if len(x_coords) == 0:
+            return None
+        points = np.column_stack((x_coords, y_coords))
+        center_point = np.array([x, y])
+        distances = np.sum((points - center_point) ** 2, axis=1)
+        if use_min:
+            furthest_idx = np.argmin(distances)
+        else:
+            furthest_idx = np.argmax(distances)
+        ax = x_coords[furthest_idx]
+        ay = y_coords[furthest_idx]
+        return ax, ay
+
     def find_black_shape_center(self, black_pixels):
         '''
         Find the center of a black shape in an RGB image by averaging all black pixel coordinates
@@ -140,6 +157,7 @@ class ImageProcessor:
             tuple (x, y) representing the center coordinates of the black shape
             or None if no black pixels are found
         '''
+        debug_points = []  # (x, y, color)
 
         # Get the coordinates of black pixels
         height, width = black_pixels.shape
@@ -152,6 +170,7 @@ class ImageProcessor:
         # Calculate the center by averaging x and y coordinates
         center_x = int(np.mean(x_coords))
         center_y = int(np.mean(y_coords))
+        '''
 
         # Create arrays of all black pixel coordinates
         points = np.column_stack((x_coords, y_coords))
@@ -167,8 +186,9 @@ class ImageProcessor:
         # Get the coordinates of the furthest point
         ax = x_coords[furthest_idx]
         ay = y_coords[furthest_idx]
+        '''
+        ax, ay = self.furthest_black_point(black_pixels, center_x, center_y)
         print(f'ax: {ax}  ay: {ay}')
-        max_distance = math.sqrt(distances[furthest_idx])
 
         # Calculate the angle of point1 from vertical
         dx = float(center_x - ax)
@@ -179,15 +199,67 @@ class ImageProcessor:
         length = np.sqrt(dx*dx + dy*dy)
         print(f'  A: ({ax}, {ay})  center: ({center_x}, {center_y})  length: {length}')
         if length == 0:
-            return (center_x, center_y, ax, ay, center_x, center_y)
+            return (center_x, center_y, ax, ay, center_x, center_y), debug_points
 
         dx = dx / length
         dy = dy / length
         print(f' dx: {dx}  dy: {dy}')
-        # Start from point B
-        bx, by = center_x, center_y
-        exact_x, exact_y = float(bx), float(by)
-        furthest_point = (int(bx), int(by))
+        # the center isn't calculated well, possibly because it's averaging
+        # black pixels outside of the main bulbs. Draw perpendicular lines
+        # to the edge of the bulbs and adjust center
+        # ldx, ldy is counterclockwise and rdx, rdy is clockwise
+        ldx, ldy = dy, -dx
+        lbx, lby = self.find_furthest_color_point(black_pixels, center_x, center_y, ldx, ldy)
+        rdx, rdy = -dy, dx
+        rbx, rby = self.find_furthest_color_point(black_pixels, center_x, center_y, rdx, rdy)
+        debug_points.append((lbx, lby, 'red'))
+        debug_points.append((rbx, rby, 'red'))
+        ldist = np.sqrt((lbx - center_x) ** 2 + (lby - center_y) ** 2)
+        rdist = np.sqrt((rbx - center_x) ** 2 + (rby - center_y) ** 2)
+        print(f' lb: ({lbx}, {lby})  rb: ({rbx}, {rby})  ldist: {ldist}  rdist: {rdist}')
+        bx, by = self.find_furthest_color_point(black_pixels, center_x, center_y, dx, dy)
+        head_to_center_dist = np.sqrt((ax - center_x) ** 2 + (ay - center_y) ** 2)
+        non_black = int(head_to_center_dist / 10)
+        lbx, lby = self.find_furthest_color_point(black_pixels, bx, by, ldx, ldy, allow_non_black=non_black)
+        rbx, rby = self.find_furthest_color_point(black_pixels, bx, by, rdx, rdy, allow_non_black=non_black)
+        debug_points.append((lbx, lby, 'blue'))
+        debug_points.append((rbx, rby, 'blue'))
+        ldist = np.sqrt((lbx - bx) ** 2 + (lby - by) ** 2)
+        rdist = np.sqrt((rbx - bx) ** 2 + (rby - by) ** 2)
+        print(f' (2)lb: ({lbx}, {lby})  rb: ({rbx}, {rby})  ldist: {ldist}  rdist: {rdist}  non_black: {non_black}')
+        #
+        head_center_to_center_tail_ratio = 1.095 / 0.53
+        move_length = head_to_center_dist * 0.4  # it's actually ~0.54 from center to tail
+        center_x2 = int(center_x + (move_length * dx))
+        center_y2 = int(center_y + (move_length * dy))
+        white_pixels = ~black_pixels
+        tailx, taily = self.furthest_black_point(white_pixels, center_x2, center_y2, use_min=True)
+        debug_points.append((tailx, taily, 'green'))
+        debug_points.append((center_x, center_y, 'red'))
+        debug_points.append((center_x2, center_y2, 'purple'))
+        print(f' tailx: {tailx}  taily: {taily}')
+        #
+        return (ax, ay, tailx, taily), debug_points
+
+
+    def find_furthest_color_point(self, black_pixels, ax, ay, dx, dy, allow_non_black=0):
+        """
+        Find the furthest point from B along the vector AB that matches target_color
+
+        Args:
+            black_pixels: 2D numpy array (height, width) of Booleans
+            point_a: tuple (x,y) of first point
+            dx, dy: floats representing the normalized run and rise
+
+        Returns:
+            tuple (x,y) of furthest matching point, or point_a if no match found
+        """
+        height, width = black_pixels.shape[:2]
+
+        # Start from point A
+        exact_x, exact_y = ax, ay
+        furthest_point = (int(ax), int(ay))
+
         # Continue until we hit image boundaries
         while True:
             # Update exact position
@@ -197,7 +269,6 @@ class ImageProcessor:
             # Convert to integer coordinates for array indexing
             x = int(round(exact_x))
             y = int(round(exact_y))
-            print(f'  x: {x}  y: {y}')
 
             # Check if we're outside image bounds
             if x < 0 or x >= width or y < 0 or y >= height:
@@ -205,62 +276,9 @@ class ImageProcessor:
 
             # Check if color matches
             if black_pixels[y, x]:
-                bx, by = x, y
-            else:
-                # stop if we hit non-black
-                break
-
-        return (center_x, center_y, ax, ay, bx, by)
-
-
-    def find_furthest_color_point(image_array, ax, ay, bx, by, target_color):
-        """
-        Find the furthest point from B along the vector AB that matches target_color
-
-        Args:
-            image_array: 3D numpy array (height, width, 3) of RGB values
-            point_a: tuple (x,y) of first point
-            point_b: tuple (x,y) of second point
-            target_color: tuple (R,G,B) of color to match
-
-        Returns:
-            tuple (x,y) of furthest matching point, or point_b if no match found
-        """
-        height, width = image_array.shape[:2]
-
-        # Calculate vector direction
-        dx = float(bx - ax)
-        dy = float(by - ay)
-
-        # Normalize the vector
-        length = np.sqrt(dx*dx + dy*dy)
-        if length == 0:
-            return point_b
-
-        dx = dx / length
-        dy = dy / length
-
-        # Start from point B
-        exact_x, exact_y = bx, by
-        furthest_point = (int(bx), int(by))
-
-        # Continue until we hit image boundaries
-        while True:
-            # Update exact position
-            exact_x += dx
-            exact_y += dy
-
-            # Convert to integer coordinates for array indexing
-            x = int(round(exact_x))
-            y = int(round(exact_y))
-
-            # Check if we're outside image bounds
-            if x < 0 or x >= width or y < 0 or y >= height:
-                break
-
-            # Check if color matches
-            if np.array_equal(image_array[y, x], target_color):
                 furthest_point = (x, y)
+            elif allow_non_black:
+                allow_non_black -= 1
             else:
                 break
 
@@ -286,7 +304,8 @@ class InteractiveImageDisplay:
     palette_window = None
     # bounding box
     black_bounding_box_axis_line = None
-    black_bounding_box_center_point = None
+    # debug rectangles
+    debug_points = None
 
     def __init__(self, master, width, height):
         """
@@ -332,7 +351,7 @@ class InteractiveImageDisplay:
                                                    anchor=tk.SE,
                                                    text='',
                                                    fill='red',
-                                                   font=('Arial', 10))
+                                                   font=('Arial', 12))
         # display buttons side-by-side
         self.button_frame = tk.Frame(master)
         self.button_frame.pack(fill=tk.X)  # Fill horizontally
@@ -373,6 +392,9 @@ class InteractiveImageDisplay:
         if self.cur_point_rect:
             self.canvas.delete(self.cur_point_rect)
             self.cur_point_rect = None
+        # show dimensions in message
+        zoom_factor = Decimal(3.0 / (self.params.xmax - self.params.xmin))
+        self.update_status(f'Zoom: {zoom_factor:.2e}')
         # Generate, normalize and convert to image
         mandelbrot = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
         print(f'MB shape: {mandelbrot.shape}')
@@ -583,31 +605,40 @@ class InteractiveImageDisplay:
             self.color_palette_button.config(text="Show Color Palette")
             self.showing_palette = False
 
+    def clear_debug_points(self):
+        if self.debug_points is not None:
+            for point in self.debug_points:
+                self.canvas.delete(point)
+        self.debug_points = []
+
+
     def toggle_draw_bounding_box(self, event=None):
+        self.clear_debug_points()
         if event != CLEAR_EVENT and self.black_bounding_box_axis_line is None:
             largest_black_region, (x1, y1, x2, y2) = self.image_processor.find_largest_black_region(self.normalized_mandelbrot)
-            center_x, center_y, ax, ay, bx, by = self.image_processor.find_black_shape_center(largest_black_region)
+            (ax, ay, bx, by), debug_points = self.image_processor.find_black_shape_center(largest_black_region)
+            for (x, y, color) in debug_points:
+                x += x1
+                y += y1
+                rect = self.canvas.create_rectangle(x - 2, y - 2, x + 2, y + 2, fill=color)
+                self.debug_points.append(rect)
+
             # add offset back
-            center_x += x1
-            center_y += y1
             ax += x1
             bx += x1
             ay += y1
             by += y1
-            print(f'A: ({ax}, {ay})  center: ({center_x}, {center_y})  B: ({bx}, {by})')
+            print(f'A: ({ax}, {ay})  B: ({bx}, {by})')
 
             w = x2 - x1
             h = y2 - y1
             print(f'toggle_draw_bounding_box: ({x1}, {y1}, {x2}, {y2}) w={w}  h={h}')
             self.black_bounding_box_axis_line = self.canvas.create_line(ax, ay, bx, by, fill='yellow', width=3)
-            self.black_bounding_box_center_point = self.canvas.create_rectangle(center_x - 2, center_y - 2, center_x + 2, center_y + 2, fill='red')
         else:
             if self.black_bounding_box_axis_line:
                 self.canvas.delete(self.black_bounding_box_axis_line)
                 self.black_bounding_box_axis_line = None
-            if self.black_bounding_box_center_point:
-                self.canvas.delete(self.black_bounding_box_center_point)
-                self.black_bounding_box_center_point = None
+
 
 if __name__ == "__main__":
     root = tk.Tk()
