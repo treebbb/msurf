@@ -8,25 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "bignum.h"
 
-#define PRINTERR(msg) fprintf(stderr, "%s\n", msg)
-#define BIGNUM_MAX_LENGTH 8  // 512 bit / sizeof(bignum_elem_t)
-#define BIGNUM_ELEM_TYPE unsigned long
-#define BIGNUM_ELEM_SIZE sizeof(BIGNUM_ELEM_TYPE)
-#define BIGNUM_ELEM_MAX ((BIGNUM_ELEM_TYPE) 0 - 1)
-/** @brief Bitmask for the lower half of a bignum_elem_t */
-#define BIGNUM_ELEM_LO (BIGNUM_ELEM_MAX >> BIGNUM_ELEM_SIZE*4)
-
-/** @brief Bitmask for the upper half of a bignum_elem_t */
-#define BIGNUM_ELEM_HI (BIGNUM_ELEM_MAX << BIGNUM_ELEM_SIZE*4)
-
-typedef unsigned long bignum_elem_t;
-
-typedef struct bignum {
-    size_t length;
-    size_t max_length;
-    bignum_elem_t *v;
-} bignum_t;
 
 // allocate
 bignum_t *bignum_new() {
@@ -123,49 +106,6 @@ void bignum_add_elem(bignum_t *a, bignum_elem_t val) {
     }
 }
 
-/*
-void bignum_multiply_elem(bignum_t *a, bignum_elem_t val) {
-    if (a == NULL) {
-        return; // Handle NULL pointer
-    }
-
-    if (val == 0) {
-        // Multiplying by 0 results in 0
-        a->v[0] = 0;
-        a->length = 1;
-        return;
-    }
-
-    size_t original_length = a->length;
-    bignum_elem_t carry = 0;
-    size_t i = 0;
-
-    while (i < original_length || carry) {
-        // If we need to extend beyond current length, reallocate
-        if (i >= a->max_length) {
-            PRINTERR("bignum_multiply_elem overflow beyond max_length");
-            return;
-        }
-
-        // Multiply and handle carry
-        bignum_elem_t product = (i < original_length ? a->v[i] : 0) * val + carry;
-        carry = product / (bignum_elem_t)(-1);  // Use -1 for max unsigned long + 1 for division
-        a->v[i] = product % (bignum_elem_t)(-1); // Modulo for remainder
-
-        // Update length if we've added significant digits
-        if (i >= a->length && a->v[i] != 0) {
-            a->length = i + 1;
-        }
-        i++;
-    }
-
-    // Trim leading zeros if multiplication resulted in extra zeros
-    while (a->length > 1 && a->v[a->length - 1] == 0) {
-        a->length--;
-    }
-
-}
-*/
 
 static inline bignum_elem_t lo(bignum_elem_t elem) {
     // Return the value of the lower bits of elem.
@@ -194,7 +134,7 @@ int bignum_multiply_elem(bignum_t *op1, bignum_elem_t op2) {
         max_length = op1->length;
 
     // Calculation starts here.
-    for (int pos=0; pos<max_length; pos++) {
+    for (size_t pos=0; pos<max_length; pos++) {
         result = carry;
         carry = 0;
 
@@ -321,8 +261,8 @@ void bignum_to_int_array(const bignum_t *num, int *result, size_t *result_size) 
     size_t base2_digits_size = 1;  // Start with one digit
 
     // Step 3 & 4: Loop over bignum_elem_t elements in v, least significant first
-    int bits_per_bignum_elem = sizeof(bignum_elem_t) * 8;
-    for (int i = 0; i < num->length; ++i) {
+    size_t bits_per_bignum_elem = sizeof(bignum_elem_t) * 8;
+    for (size_t i = 0; i < num->length; ++i) {
         bignum_elem_t val = num->v[i];
         // update the base2_digits to match the bit shift for this num->v element
         while (bit_count < (i * bits_per_bignum_elem) + 1) {
@@ -427,122 +367,3 @@ void bignum_from_string(const char *base_10_digits, bignum_t *result) {
 
 }
 
-// Example usage:
-int test1() {
-    bignum_t a, b, sum;
-    bignum_elem_t a_val[8];
-    bignum_elem_t b_val[8];
-    bignum_elem_t sum_val[8];
-    // Initialize 'a'
-    a.length = 2; // Assuming 512 bits / 64 bits per unsigned long
-    a.max_length = 8;
-    a.v = a_val;
-    a.v[0] = 1;
-    a.v[1] = 1;
-    // initialize 'b'
-    b.length = 1;
-    b.max_length = 8;
-    b.v = b_val;
-    b.v[0] = 2;
-    // initialize sum
-    sum.length = 0;
-    sum.max_length = 8;
-    sum.v = sum_val;
-    // perform operation
-    bignum_add(&sum, &a, &b);
-    // print operation
-    char *a_str = bignum_to_string(&a);
-    char *b_str = bignum_to_string(&b);
-    char *sum_str = bignum_to_string(&sum);
-    printf("%s + %s = %s\n", a_str, b_str, sum_str);
-    free(a_str);
-    free(b_str);
-    free(sum_str);
-    
-    // Print or use 'sum' here
-    printf("sum.length: %zu\n", sum.length);
-    printf("sum.max_length: %zu\n", sum.max_length);    
-    for (int i = 0; i < sum.length; ++i) {
-        printf("sum.v[%d]=%lu\n", i, sum.v[i]);
-    }
-    
-
-    // Free memory...
-    return 0;
-}
-
-void print_and_free(char *message) {
-    if (message != NULL) {
-        printf("%s\n", message);
-        free(message);
-    }
-}
-
-int test2() {
-    bignum_t *a;
-    /*
-    // test add and multiply
-    a = bignum_new();
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-
-    bignum_add_elem(a, 10);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-
-    bignum_add_elem(a, 10);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-
-    bignum_multiply_elem(a, 10);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-    
-    bignum_free(a);
-    /// try from_string
-    a = bignum_new();
-    bignum_from_string("123", a);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-    bignum_free(a);
-    // try 2^64 - 1
-    a = bignum_new();
-    bignum_from_string("18446744073709551615", a);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-    bignum_add_elem(a, 1);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));    
-    bignum_free(a);
-    // try 2^64
-    a = bignum_new();
-    bignum_from_string("18446744073709551616", a);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));    
-    bignum_free(a);
-    */
-    // try 2^128
-    a = bignum_new();
-    bignum_from_string("340282366920938463463374607431768211456", a);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-    bignum_free(a);
-    
-    /*
-    a = bignum_new();
-    bignum_add_elem(a, 1);
-    for (size_t i = 0; i < 10; ++i) {
-        bignum_multiply_elem(a, 256);
-        bignum_print_internals(a);
-        print_and_free(bignum_to_string(a));    
-    }
-    bignum_free(a);
-    */
-    return 0;
-}
-
-int main() {
-    bignum_t a;
-    
-    return test2();
-}
