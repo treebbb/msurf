@@ -1,14 +1,3 @@
-// Function to split a float into high and low parts
-//void split_float(float value, struct double *result) {
-//    // Round to nearest representable float for high part
-//    result->high = rintf(value * 1e8f) / 1e8f;
-//    
-//    // Calculate low part as the difference
-//    result->low = value - result->high;
-//}
-//
-//// Function to multiply two 'doubles' (split into high and low parts) using FP32 operations
-//float double_multiply(struct double a, struct double b) {
 
 __kernel void mandelbrot(__global char *output,
                          __global char *palette,
@@ -17,8 +6,9 @@ __kernel void mandelbrot(__global char *output,
     const int x = get_global_id(0);
     const int y = get_global_id(1);
 
-    const float c_real = xmin + step_size * x;
-    const float c_imag = ymin + step_size * y;
+    // fmaf(a, b, c) is equivalent to (a * b) + c, but with better rounding
+    const float c_real = fmaf(step_size, x, xmin);
+    const float c_imag = fmaf(step_size, y, ymin);
 
     float z_real = 0.0f;
     float z_imag = 0.0f;
@@ -29,7 +19,8 @@ __kernel void mandelbrot(__global char *output,
     for(i = 0; i < maxiter; i++) {
         if(z_real_squared + z_imag_squared > horizon * horizon) break;
 
-        z_imag = 2.0f * z_real * z_imag + c_imag;
+        z_imag = fmaf(2.0f * z_real, z_imag, c_imag);
+        //z_imag = 2.0f * z_real * z_imag + c_imag;
         z_real = z_real_squared - z_imag_squared + c_real;
 
         z_real_squared = z_real * z_real;
