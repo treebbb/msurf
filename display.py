@@ -394,7 +394,8 @@ class InteractiveImageDisplay:
             self.cur_point_rect = None
         # show dimensions in message
         zoom_factor = Decimal(3.0 / (self.params.xmax - self.params.xmin))
-        self.update_status(f'Zoom: {zoom_factor:.2e}  MaxIter: {self.params.maxiter}')
+        step_size = (self.params.xmax - self.params.xmin) / self.params.width
+        self.update_status(f'Zoom: {zoom_factor:.2e}  MaxIter: {self.params.maxiter}  Step: {step_size:.2e}')
         # Generate, normalize and convert to image
         self.mandelbrot_array = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
         print(f'MB shape: {self.mandelbrot_array.shape}')
