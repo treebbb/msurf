@@ -1,3 +1,9 @@
+/*
+
+  Inspiration / reference: https://github.com/messersm/bignum.cl/blob/master/src/bignum.h
+
+ */
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
