@@ -119,7 +119,7 @@ static inline bignum_elem_t hi(bignum_elem_t elem) {
 
 int bignum_multiply_elem(bignum_t *op1, bignum_elem_t op2) {
     // rop = op1 * op2
-    bignum_elem_t result;
+    bignum_elem_t result, tmp;
     bignum_elem_t lo1, hi1, lo2, hi2;
     bignum_elem_t carry = 0;
     bignum_elem_t elem1, elem2;
@@ -146,8 +146,16 @@ int bignum_multiply_elem(bignum_t *op1, bignum_elem_t op2) {
         hi2 = hi(elem2);
 
         result += lo1 * lo2;
-        result += (hi1 * lo2) << BIGNUM_ELEM_SIZE * 4;
-        result += (lo1 * hi2) << BIGNUM_ELEM_SIZE * 4;
+        tmp = result + ((hi1 * lo2) << BIGNUM_ELEM_SIZE * 4);
+        if (tmp < result) {
+            carry += 1;
+        }
+        result = tmp;
+        tmp = result + ((lo1 * hi2) << BIGNUM_ELEM_SIZE * 4);
+        if (tmp < result) {
+            carry += 1;
+        }
+        result = tmp;
 
         carry += hi1 * hi2;
         carry += hi(hi1 * lo2);
@@ -168,6 +176,10 @@ int bignum_multiply_elem(bignum_t *op1, bignum_elem_t op2) {
         }
     } else {
         op1->length = length;
+    }
+    if (op1->length == 0) {
+        // shitty poorly defined spec for zero. blame RJL
+        op1->length = 1;
     }
     return overflow;
 }
@@ -367,3 +379,12 @@ void bignum_from_string(const char *base_10_digits, bignum_t *result) {
 
 }
 
+bignum_t *bignum_new_from_string(char *base_10_digits) {
+    bignum_t *a = bignum_new();
+    if (a == NULL) {
+        fprintf(stderr, "bignum_new_from_string error allocating bignum");
+        return NULL;
+    }
+    bignum_from_string(base_10_digits, a);
+    return a;
+}
