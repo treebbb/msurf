@@ -11,8 +11,12 @@ BIN_DIR = $(BUILD_DIR)/bin
 LIB_DIR = $(BUILD_DIR)/lib
 
 # Files
-SRC = $(SRC_DIR)/bignum.c
-TEST_SRC = tests/c/test_bignum.c
+SRC = \
+  $(SRC_DIR)/bignum.c \
+  $(SRC_DIR)/tfm_opencl.c
+TEST_SRC = \
+  tests/c/test_bignum.c \
+  tests/c/test_tfm.c
 OBJ = $(SRC:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 TEST_OBJ = $(TEST_SRC:tests/c/%.c=$(BUILD_DIR)/%.o)
 LIB = $(LIB_DIR)/libbignum.so
@@ -34,10 +38,10 @@ $(BUILD_DIR)/%.o: tests/c/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(LIB): $(OBJ)
-	$(CC) -shared -o $@ $<
+	$(CC) -shared -rdynamic -o $@ $(OBJ)
 
 $(TEST_EXE): $(TEST_OBJ)
-	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
+	$(CC) $(CFLAGS)  $(TEST_OBJ) -o $@ $(LDFLAGS)
 
 # Clean up
 clean:
@@ -45,3 +49,7 @@ clean:
 
 # Phony targets
 .PHONY: all clean
+
+# debug
+debug:
+	@echo "TEST_OBJ is $(TEST_OBJ)"

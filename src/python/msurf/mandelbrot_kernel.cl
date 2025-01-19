@@ -11,6 +11,13 @@
 #define FP_CMP(num1, num2) (num1 == num2) ? FP_EQ : (num1 > num2) ? FP_GT : FP_LT
 #define FP_MUL2(num1) (num1 * 2.0f)  // multiply by 2
 
+/* a FP type */
+typedef struct {
+    fp_digit dp[FP_SIZE];
+    int      used,
+             sign;
+} fp_int;
+
 
 __kernel void mandelbrot(__global char *output,
                          __global char *palette,

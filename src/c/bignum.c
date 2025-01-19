@@ -187,22 +187,11 @@ int bignum_multiply_elem(bignum_t *op1, bignum_elem_t op2) {
 
 
 // multiply two values and store the result in place. return overflow
-bignum_elem_t bignum_multiply_inplace(bignum_t *a, const bignum_t *b) {
+int bignum_multiply_inplace(bignum_t *a, const bignum_t *b) {
     size_t scratchpad_size = a->max_length * sizeof(bignum_elem_t);
     bignum_elem_t *scratchpad = malloc(scratchpad_size);
     memset(scratchpad, 0, scratchpad_size);
-    size_t length = 0;
-
-    for (size_t i = 0; i < b->length; ++i) {
-        size_t scratchpad_offset = i;
-        bignum_elem_t bval = b->v[i];
-        
-    }
-
-    // Trim leading zeros
-    while (result->length > 1 && result->v[result->length - 1] == 0) {
-        result->length--;
-    }
+    return b->length; // TODO!!!
 }
 
 // Converts bignum to base 10 string representation

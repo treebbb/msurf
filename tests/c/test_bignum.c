@@ -1,65 +1,4 @@
-#include <assert.h>
-#include "bignum.h"
-#include <string.h>
-
-/* Begin test framework helpers */
-void bignum_print_internals(bignum_t *num) {
-    printf("bignum(length=%zu, maxlength=%zu)\n", num->length, num->max_length);
-    for (size_t i = 0; i < num->length; ++i) {
-        printf("  [%zu]: %lu\n", i, num->v[i]);
-    }
-}
-
-void test_eq(bignum_t* bignum_instance, const char* expected) {
-    char* bignum_str = bignum_to_string(bignum_instance);
-    if (bignum_str == NULL) {
-        fprintf(stderr, "Failed to convert bignum to string\n");
-        assert(0 && "Failed to convert bignum to string");
-    } else {
-        int result = strcmp(bignum_str, expected);
-        if (result != 0) {
-            printf("Expected %s  Got %s\n", expected, bignum_str);
-            bignum_print_internals(bignum_instance);
-        }
-        assert(result == 0 && "Assertion failed: expected/actual unequal");
-        free(bignum_str); // Free the dynamically allocated string
-    }
-}
-#define TESTEQ(bignum, str) do { \
-    test_eq((bignum), (str)); \
-} while(0)
-
-/**** test function macros ****/
-// Array to hold pointers to all test functions
-#define MAX_TESTS 100 // Adjust based on the maximum number of tests you expect
-int test_count = 0;
-typedef struct {
-    void (*func)(void);
-    const char *name;
-} TestFunction;
-TestFunction test_functions[MAX_TESTS];
-
-// Function to register tests
-void register_test(void (*func)(void), const char *name) {
-    if (test_count < MAX_TESTS) {
-        test_functions[test_count].func = func;
-        test_functions[test_count].name = name;
-        test_count++;
-    } else {
-        fprintf(stderr, "Too many tests, increase MAX_TESTS\n");
-        exit(1);
-    }
-}
-// Macro to define test function
-// this registers the test in the test_functions array used by main()
-// and then starts the function
-#define DEFINE_TEST(func) \
-void func(void); \
-static void __attribute__((constructor)) register_##func(void) { register_test(func, #func); } \
-static void __attribute__((used)) use_##func(void) { register_##func(); } \
-void func(void)
-
-/* End test framework helpers */
+#include "bignum_test_framework.h"
 
 /* Begin tests */
 DEFINE_TEST(test_bignum_create) {
@@ -187,12 +126,6 @@ void print_and_free(char *message) {
     }
 }
 
-int main() {
-    for (int i = 0; i < test_count; ++i) {
-        printf("Running %s .... ", test_functions[i].name);
-        test_functions[i].func();
-        printf("OK\n");
-    }
-    printf("%d tests completed successfully.\n", test_count);
-    return 0;
+int test_bignum_main() {
+    return btl_run_tests();
 }
