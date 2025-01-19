@@ -10,7 +10,6 @@ void bignum_print_internals(bignum_t *num) {
     }
 }
 
-#define CHECKVAL(bignum, strval) fprintf(stderr, "%s\n", msg)
 void test_eq(bignum_t* bignum_instance, const char* expected) {
     char* bignum_str = bignum_to_string(bignum_instance);
     if (bignum_str == NULL) {
@@ -149,51 +148,36 @@ DEFINE_TEST(test_bignum_multiply_elem3) {
     bignum_free(a);
 }
 
-/* End tests */
-// Example usage:
-int test1() {
-    bignum_t a, b, sum;
-    bignum_elem_t a_val[8];
-    bignum_elem_t b_val[8];
-    bignum_elem_t sum_val[8];
-    // Initialize 'a'
-    a.length = 2; // Assuming 512 bits / 64 bits per unsigned long
-    a.max_length = 8;
-    a.v = a_val;
-    a.v[0] = 1;
-    a.v[1] = 1;
-    // initialize 'b'
-    b.length = 1;
-    b.max_length = 8;
-    b.v = b_val;
-    b.v[0] = 2;
-    // initialize sum
-    sum.length = 0;
-    sum.max_length = 8;
-    sum.v = sum_val;
-    // perform operation
-    bignum_add(&sum, &a, &b);
-    // print operation
-    char *a_str = bignum_to_string(&a);
-    char *b_str = bignum_to_string(&b);
-    char *sum_str = bignum_to_string(&sum);
-    printf("%s + %s = %s\n", a_str, b_str, sum_str);
-    free(a_str);
-    free(b_str);
-    free(sum_str);
-    
-    // Print or use 'sum' here
-    printf("sum.length: %zu\n", sum.length);
-    printf("sum.max_length: %zu\n", sum.max_length);    
-    for (size_t i = 0; i < sum.length; ++i) {
-        printf("sum.v[%zu]=%lu\n", i, sum.v[i]);
-    }
-    
-
-    // Free memory...
-    return 0;
+DEFINE_TEST(test_bignum_add_inplace1) {
+    bignum_t *a = bignum_new();
+    bignum_t *b = bignum_new_from_string("0");
+    bignum_add_inplace(a, b);
+    TESTEQ(a, "0");
+    TESTEQ(b, "0");
+    bignum_free(b);
+    b = bignum_new_from_string("2");
+    bignum_add_inplace(a, b);
+    TESTEQ(a, "2");
+    TESTEQ(b, "2");
+    bignum_add_inplace(a, b);
+    TESTEQ(a, "4");
+    TESTEQ(b, "2");
+    bignum_free(a);
+    bignum_free(b);
 }
 
+DEFINE_TEST(test_bignum_add_inplace2) {
+    bignum_t *a = bignum_new();
+    bignum_t *b = bignum_new_from_string("9223372036854775808");  // 2^63
+    bignum_add_inplace(a, b);
+    TESTEQ(a, "9223372036854775808");
+    bignum_add_inplace(a, b);
+    TESTEQ(a, "18446744073709551616");
+    bignum_add_inplace(a, b);
+    TESTEQ(a, "27670116110564327424");
+    bignum_free(a);
+    bignum_free(b);
+}
 
 
 void print_and_free(char *message) {
@@ -203,72 +187,7 @@ void print_and_free(char *message) {
     }
 }
 
-int test2() {
-    bignum_t *a;
-    /*
-    // test add and multiply
-    a = bignum_new();
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-
-    bignum_add_elem(a, 10);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-
-    bignum_add_elem(a, 10);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-
-    bignum_multiply_elem(a, 10);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-    
-    bignum_free(a);
-    /// try from_string
-    a = bignum_new();
-    bignum_from_string("123", a);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-    bignum_free(a);
-    // try 2^64 - 1
-    a = bignum_new();
-    bignum_from_string("18446744073709551615", a);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-    bignum_add_elem(a, 1);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));    
-    bignum_free(a);
-    // try 2^64
-    a = bignum_new();
-    bignum_from_string("18446744073709551616", a);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));    
-    bignum_free(a);
-    */
-    // try 2^128
-    a = bignum_new();
-    bignum_from_string("340282366920938463463374607431768211456", a);
-    bignum_print_internals(a);
-    print_and_free(bignum_to_string(a));
-    bignum_free(a);
-    
-    /*
-    a = bignum_new();
-    bignum_add_elem(a, 1);
-    for (size_t i = 0; i < 10; ++i) {
-        bignum_multiply_elem(a, 256);
-        bignum_print_internals(a);
-        print_and_free(bignum_to_string(a));    
-    }
-    bignum_free(a);
-    */
-    return 0;
-}
-
 int main() {
-    //return test2();
-    //test_bignum_create();
     for (int i = 0; i < test_count; ++i) {
         printf("Running %s .... ", test_functions[i].name);
         test_functions[i].func();

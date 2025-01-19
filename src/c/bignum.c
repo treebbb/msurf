@@ -1,7 +1,8 @@
 /*
 
   Inspiration / reference: https://github.com/messersm/bignum.cl/blob/master/src/bignum.h
-
+  See: http://dl.fefe.de/bignum.pdf
+  See TomFastMath for an implementation used for cryptography
  */
 
 #include <math.h>
@@ -37,7 +38,7 @@ void bignum_zero(bignum_t *num) {
     num->v[0] = 0;
     num->length = 1;
 }
-// print internals
+// print bignum internals
 void bignum_print_internals(bignum_t *num) {
     printf("bignum(length=%zu, maxlength=%zu)\n", num->length, num->max_length);
     for (size_t i = 0; i < num->length; ++i) {
@@ -45,21 +46,21 @@ void bignum_print_internals(bignum_t *num) {
     }
 }
 
-// Function to add two bignum values
-void bignum_add(bignum_t *result, const bignum_t *a, const bignum_t *b) {
+// Add a to b and update a with the result. return overflow (0 or 1)
+int bignum_add_inplace(bignum_t *a, const bignum_t *b) {
     // Determine the max length for the result
-    size_t max_length = (a->length > b->length) ? a->length : b->length;
-    if (max_length > result->max_length) {
-        // Reallocate if necessary, not handling memory management here
+    size_t combined_length = (a->length > b->length) ? a->length : b->length;
+    if (combined_length > a->max_length) {
+        // b->length > a->max_length
         fprintf(stderr, "Error: result bignum too small for sum.\n");
-        return;
+        return 0;
     }
 
-    // Reset result's length to zero
-    result->length = 0;
+    // track length of result
+    size_t length = 0;
 
     bignum_elem_t carry = 0;
-    for (size_t i = 0; i < max_length || carry; ++i) {
+    for (size_t i = 0; i < combined_length; ++i) {
         // Get digits from 'a' and 'b', assuming 0 for out-of-length digits
         bignum_elem_t digit_a = (i < a->length) ? a->v[i] : 0;
         bignum_elem_t digit_b = (i < b->length) ? b->v[i] : 0;
@@ -68,19 +69,19 @@ void bignum_add(bignum_t *result, const bignum_t *a, const bignum_t *b) {
         bignum_elem_t sum = digit_a + digit_b + carry;
         carry = (sum < digit_a || sum < digit_b) ? 1 : 0;  // If overflow, carry = 1
 
-        // Store result
-        if (i >= result->max_length) {
-            fprintf(stderr, "Error: result bignum overflow.\n");
-            return;
+        a->v[i] = sum;
+        ++length;
+    }
+    if (carry) {
+        if (length < (a->max_length - 1)) {
+            a->v[length++] = carry;
+            carry = 0;
+        } else {
+            // overflow
         }
-        result->v[i] = sum;
-        result->length = i + 1;
     }
-
-    // Trim leading zeros from the result
-    while (result->length > 1 && result->v[result->length - 1] == 0) {
-        result->length--;
-    }
+    a->length = length;
+    return carry;
 }
 
 // adds val to a (in-place)
@@ -185,37 +186,17 @@ int bignum_multiply_elem(bignum_t *op1, bignum_elem_t op2) {
 }
 
 
-// Helper function to perform a single digit multiplication and add to result
-static void multiply_digit(bignum_t *result, const bignum_t *a, bignum_elem_t digit, size_t offset) {
-    bignum_elem_t carry = 0;
-    for (size_t i = 0; i < a->length || carry; ++i) {
-        bignum_elem_t product = (i < a->length ? a->v[i] : 0) * digit + carry;
-        if (i + offset >= result->max_length) {
-            fprintf(stderr, "Error: result bignum overflow in multiply_digit.\n");
-            return;
-        }
-        carry = product / (bignum_elem_t)(-1);  // Use -1 to get the max value for unsigned long + 1 for division
-        product %= (bignum_elem_t)(-1);          // Modulo to get the remainder
-        
-        bignum_elem_t sum = result->v[i + offset] + product;
-        carry += (sum < result->v[i + offset] || sum < product) ? 1 : 0;  // Check for overflow
-        result->v[i + offset] = sum;
-    }
-    if (result->length < a->length + offset + (carry > 0 ? 1 : 0)) {
-        result->length = a->length + offset + (carry > 0 ? 1 : 0);
-    }
-    if (carry > 0) {
-        result->v[result->length - 1] = carry;
-    }
-}
-
-// Function to multiply two bignum values
-void bignum_multiply(bignum_t *result, const bignum_t *a, const bignum_t *b) {
-    // Reset result
-    result->length = 0;
+// multiply two values and store the result in place. return overflow
+bignum_elem_t bignum_multiply_inplace(bignum_t *a, const bignum_t *b) {
+    size_t scratchpad_size = a->max_length * sizeof(bignum_elem_t);
+    bignum_elem_t *scratchpad = malloc(scratchpad_size);
+    memset(scratchpad, 0, scratchpad_size);
+    size_t length = 0;
 
     for (size_t i = 0; i < b->length; ++i) {
-        multiply_digit(result, a, b->v[i], i);
+        size_t scratchpad_offset = i;
+        bignum_elem_t bval = b->v[i];
+        
     }
 
     // Trim leading zeros
