@@ -1,3 +1,7 @@
+'''
+export PYOPENCL_CTX=':1'
+'''
+
 from copy import copy
 import cv2
 from decimal import Decimal
@@ -641,10 +645,13 @@ class InteractiveImageDisplay:
                 self.black_bounding_box_axis_line = None
 
 
-if __name__ == "__main__":
+def main():
     root = tk.Tk()
     root.title("Interactive Mandelbrot Set Display")
     root.resizable(True, True)
     display = InteractiveImageDisplay(root, 800, 600)
     display.update_status('Ready to explore the Mandelbrot set')
     root.mainloop()
+
+if __name__ == "__main__":
+    main()
