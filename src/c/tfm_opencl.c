@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <string.h>
 #include "tfm_opencl.h"
 
@@ -25,7 +26,8 @@
    } while (0);
 
 /* generic PxQ multiplier */
-void fp_mul_comba(const fp_int *A, const fp_int *B, fp_int *C)
+/* was fp_mul_comba */
+void fp_mul(const fp_int *A, const fp_int *B, fp_int *C)
 {
    int             ix, iy, iz, tx, ty, pa;
    const fp_digit *tmpx, *tmpy;
@@ -243,4 +245,252 @@ void s_fp_sub(const fp_int *a, const fp_int *b, fp_int *c)
      c->dp[x] = 0;
   }
   fp_clamp(c);
+}
+
+// Function to set an fp_int from a base-10 string
+void fp_from_radix(fp_int *a, const char *str) {
+    // Initialize the fp_int structure
+    fp_zero(a);
+    
+    // Determine if the number is negative
+    int is_negative = (str[0] == '-');
+    if (is_negative) {
+        str++; // Skip the negative sign for further processing
+    }
+
+    // Iterate over each character in the string
+    for (size_t i = 0; i < strlen(str); ++i) {
+        // Ensure the character is a digit
+        if (!isdigit(str[i])) {
+            continue;
+        }
+
+        // Multiply the current value by 10
+        fp_mul_d(a, 10, a);
+        
+        // Add the new digit
+        fp_add_d(a, str[i] - '0', a);
+    }
+
+    // Set the sign of the result
+    if (is_negative) {
+        a->sign = FP_NEG;
+    } else {
+        a->sign = FP_ZPOS;
+    }
+}
+
+// Function to multiply an fp_int by a single digit
+void fp_mul_d(fp_int *a, fp_digit b, fp_int *c) {
+    fp_int temp;
+    int sign = a->sign;
+    fp_zero(&temp);
+    
+    fp_digit carry = 0;
+    for (int i = 0; i < a->used; ++i) {
+        fp_word prod = (fp_word)a->dp[i] * b + carry;
+        temp.dp[i] = (fp_digit)(prod & FP_MASK);
+        carry = (fp_digit)(prod >> DIGIT_BIT);
+    }
+    if (carry != 0) {
+        temp.dp[a->used] = carry;
+        temp.used = a->used + 1;
+    } else {
+        temp.used = a->used;
+    }
+    temp.sign = sign;
+    fp_copy(&temp, c);
+}
+
+// Function to add a single digit to an fp_int
+void fp_add_d(fp_int *a, fp_digit b, fp_int *c) {
+    int i;
+    fp_word sum = b;
+
+    for (i = 0; i < a->used; ++i) {
+        sum = (fp_word)a->dp[i] + sum;
+        c->dp[i] = (fp_digit) sum;
+        sum >>= DIGIT_BIT;
+    }
+    if (sum) {
+        c->dp[i++] = (fp_digit) sum;
+    }
+    c->used = i;
+    fp_clamp(c);
+}
+
+// shift digits left
+void fp_lshd(fp_int *a, int x)
+{
+   int y;
+
+   /* move up and truncate as required */
+   y = MIN(a->used + x - 1, (int)(FP_SIZE-1));
+
+   /* store new size */
+   a->used = y + 1;
+
+   /* move digits */
+   for (; y >= x; y--) {
+       a->dp[y] = a->dp[y-x];
+   }
+
+   /* zero lower digits */
+   for (; y >= 0; y--) {
+       a->dp[y] = 0;
+   }
+
+   /* clamp digits */
+   fp_clamp(a);
+}
+
+// shift digits right
+void fp_rshd(fp_int *a, int x)
+{
+  int y;
+
+  /* too many digits just zero and return */
+  if (x >= a->used) {
+     fp_zero(a);
+     return;
+  }
+
+   /* shift */
+   for (y = 0; y < a->used - x; y++) {
+      a->dp[y] = a->dp[y+x];
+   }
+
+   /* zero rest */
+   for (; y < a->used; y++) {
+      a->dp[y] = 0;
+   }
+
+   /* decrement count */
+   a->used -= x;
+   fp_clamp(a);
+}
+
+/* c = a * 2**d */
+void fp_mul_2d(const fp_int *a, int b, fp_int *c)
+{
+   fp_digit carry, carrytmp, shift;
+   int x;
+
+   /* copy it */
+   fp_copy(a, c);
+
+   /* handle whole digits */
+   if (b >= DIGIT_BIT) {
+      fp_lshd(c, b/DIGIT_BIT);
+   }
+   b %= DIGIT_BIT;
+
+   /* shift the digits */
+   if (b != 0) {
+      carry = 0;
+      shift = DIGIT_BIT - b;
+      for (x = 0; x < c->used; x++) {
+          carrytmp = c->dp[x] >> shift;
+          c->dp[x] = (c->dp[x] << b) + carry;
+          carry = carrytmp;
+      }
+      /* store last carry if room */
+      if (carry && x < FP_SIZE) {
+         c->dp[c->used++] = carry;
+      }
+   }
+   fp_clamp(c);
+}
+
+/* c = a / 2**b */
+void fp_div_2d(const fp_int *a, int b, fp_int *c, fp_int *d)
+{
+  fp_digit D, r, rr;
+  int      x;
+  fp_int   t;
+
+  /* if the shift count is <= 0 then we do no work */
+  if (b <= 0) {
+    fp_copy (a, c);
+    if (d != NULL) {
+      fp_zero (d);
+    }
+    return;
+  }
+
+  fp_init(&t);
+
+  /* get the remainder */
+  if (d != NULL) {
+    fp_mod_2d (a, b, &t);
+  }
+
+  /* copy */
+  fp_copy(a, c);
+
+  /* shift by as many digits in the bit count */
+  if (b >= (int)DIGIT_BIT) {
+    fp_rshd (c, b / DIGIT_BIT);
+  }
+
+  /* shift any bit count < DIGIT_BIT */
+  D = (fp_digit) (b % DIGIT_BIT);
+  if (D != 0) {
+    register fp_digit *tmpc, mask, shift;
+
+    /* mask */
+    mask = (((fp_digit)1) << D) - 1;
+
+    /* shift for lsb */
+    shift = DIGIT_BIT - D;
+
+    /* alias */
+    tmpc = c->dp + (c->used - 1);
+
+    /* carry */
+    r = 0;
+    for (x = c->used - 1; x >= 0; x--) {
+      /* get the lower  bits of this word in a temp */
+      rr = *tmpc & mask;
+
+      /* shift the current word and mix in the carry bits from the previous word */
+      *tmpc = (*tmpc >> D) | (r << shift);
+      --tmpc;
+
+      /* set the carry to the carry bits of the current word found above */
+      r = rr;
+    }
+  }
+  fp_clamp (c);
+  if (d != NULL) {
+    fp_copy (&t, d);
+  }
+}
+
+/* c = a mod 2**d */
+void fp_mod_2d(const fp_int *a, int b, fp_int *c)
+{
+   int x;
+
+   /* zero if count less than or equal to zero */
+   if (b <= 0) {
+      fp_zero(c);
+      return;
+   }
+
+   /* get copy of input */
+   fp_copy(a, c);
+
+   /* if 2**d is larger than we just return */
+   if (b >= (DIGIT_BIT * a->used)) {
+      return;
+   }
+
+  /* zero digits above the last digit of the modulus */
+  for (x = (b / DIGIT_BIT) + ((b % DIGIT_BIT) == 0 ? 0 : 1); x < c->used; x++) {
+    c->dp[x] = 0;
+  }
+  /* clear the digit that is not completely outside/inside the modulus */
+  c->dp[b / DIGIT_BIT] &= ~((fp_digit)0) >> (DIGIT_BIT - b);
+  fp_clamp (c);
 }

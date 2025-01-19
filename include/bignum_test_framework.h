@@ -1,9 +1,11 @@
 #pragma once
 #include <assert.h>
 #include "bignum.h"
+#include "tfm_opencl.h"
 #include <string.h>
 
 static void btl_bignum_print_internals(bignum_t *num);
+static void btl_tfm_print_internals(fp_int *num);
 static void btl_test_eq(bignum_t* bignum_instance, const char* expected);
 static void btl_register_test(void (*func)(void), const char *name);
 
@@ -34,6 +36,12 @@ static GCC_MARK_USED void btl_bignum_print_internals(bignum_t *num) {
     printf("bignum(length=%zu, maxlength=%zu)\n", num->length, num->max_length);
     for (size_t i = 0; i < num->length; ++i) {
         printf("  [%zu]: %lu\n", i, num->v[i]);
+    }
+}
+static GCC_MARK_USED void btl_tfm_print_internals(fp_int *num) {
+    printf("fp_int(used=%d sign=%d)\n", num->used, num->sign);
+    for (int i = 0; i < num->used; ++i) {
+        printf("  [%d]: %u\n", i, num->dp[i]);
     }
 }
 

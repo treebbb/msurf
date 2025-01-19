@@ -93,3 +93,21 @@ int fp_cmp_mag(const fp_int *a, const fp_int *b);
 void s_fp_add(const fp_int *a, const fp_int *b, fp_int *c);
 /* unsigned subtraction ||a|| >= ||b|| ALWAYS! */
 void s_fp_sub(const fp_int *a, const fp_int *b, fp_int *c);
+
+// Function to set an fp_int from a base-10 string
+void fp_from_radix(fp_int *a, const char *str);
+
+// Function to multiply an fp_int by a single digit
+void fp_mul_d(fp_int *a, fp_digit b, fp_int *c);
+
+// Function to add a single digit to an fp_int
+void fp_add_d(fp_int *a, fp_digit b, fp_int *c);
+
+/* c = a / 2**b */
+void fp_div_2d(const fp_int *a, int b, fp_int *c, fp_int *d);
+
+/* c = a * 2**d */
+void fp_mul_2d(const fp_int *a, int b, fp_int *c);
+
+/* c = a mod 2**d */
+void fp_mod_2d(const fp_int *a, int b, fp_int *c);
