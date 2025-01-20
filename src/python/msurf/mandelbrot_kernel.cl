@@ -1,23 +1,14 @@
 
-/* math operators */
-#define FP_FMAF(mul1, mul2, add1) mad(mul1, mul2, add1)
-#define FP_SQR(mul1) mad(mul1, mul1, 0.0f)
-#define FP_SUB(add1, sub1) add1 - sub1
-#define FP_ADD(add1, sub1) add1 + sub1
-#define FP_CMP(num1, num2) (num1 == num2) ? FP_EQ : (num1 > num2) ? FP_GT : FP_LT
-#define FP_MUL2(num1) (num1 * 2.0f)  // multiply by 2
-
-
 __kernel void mandelbrot(__global char *output,
                          __global char *palette,
-                         const int maxiter, const float horizon, const int width, const int height,
+                         const int maxiter, const float horizon_squared, const int width, const int height,
                          const float xmin, const float ymin, const float step_size) {
     const int x = get_global_id(0);
     const int y = get_global_id(1);
 
     // fmaf(a, b, c) is equivalent to (a * b) + c, but with better rounding
-    const float c_real = FP_FMAF(step_size, x, xmin);
-    const float c_imag = FP_FMAF(step_size, y, ymin);
+    const float c_real = fmaf(step_size, x, xmin);
+    const float c_imag = fmaf(step_size, y, ymin);
 
     float z_real = 0.0f;
     float z_imag = 0.0f;
@@ -26,14 +17,14 @@ __kernel void mandelbrot(__global char *output,
     int i;
 
     for(i = 0; i < maxiter; i++) {
-        if(FP_CMP(FP_ADD(z_real_squared, z_imag_squared), FP_SQR(horizon * horizon)) == FP_GT)  break;
+        if(z_real_squared + z_imag_squared > horizon_squared) break;
 
+        z_imag = fmaf(2.0f * z_real, z_imag, c_imag);
         //z_imag = 2.0f * z_real * z_imag + c_imag;
-        z_imag = FP_FMAF(FP_MUL2(z_real), z_imag, c_imag);
-        z_real = FP_ADD(FP_SUB(z_real_squared, z_imag_squared), c_real);
+        z_real = z_real_squared - z_imag_squared + c_real;
 
-        z_real_squared = FP_SQR(z_real);
-        z_imag_squared = FP_SQR(z_imag);
+        z_real_squared = z_real * z_real;
+        z_imag_squared = z_imag * z_imag;
     }
     // 8-bit rgb output
     // the output buffer is displayed buffer[0] = top

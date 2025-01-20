@@ -1,12 +1,11 @@
 
 __kernel void mandelbrot(__global char *output,
                          __global char *palette,
-                         const int maxiter, const float horizon, const int width, const int height,
+                         const int maxiter, const float horizon_squared, const int width, const int height,
                          const float xmin, const float ymin, const float step_size) {
     const int x = get_global_id(0);
     const int y = get_global_id(1);
     int i = 0;
-    const float horizon_squared = horizon * horizon;  // !!! square horizon in caller
     // fmaf(a, b, c) is equivalent to (a * b) + c, but with better rounding
     fp_int z_real, z_imag, z_real_squared, z_imag_squared, c_real, c_imag, temp_fp;
     // set c_real to step_size

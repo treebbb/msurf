@@ -38,13 +38,17 @@ class MandelbrotFuncs:
         self.queue = cl.CommandQueue(self.ctx)
         # OpenCL kernel code
         dir_path = os.path.dirname(os.path.realpath(__file__))
-        tfm_code = open('include/tfm_opencl.h', 'r').read()
-        tfm_code += open('src/c/tfm_opencl.c', 'r').read()
-        kernel_code_path = os.path.join(dir_path, 'mandelbrot_kernel_tfm.cl')
-        kernel_src = open(kernel_code_path, 'r').read()
-
+        use_tfm = 0
+        if use_tfm:
+            tfm_code = open('include/tfm_opencl.h', 'r').read()
+            tfm_code += open('src/c/tfm_opencl.c', 'r').read()
+            kernel_code_path = os.path.join(dir_path, 'mandelbrot_kernel_tfm.cl')
+            kernel_src = tfm_code + open(kernel_code_path, 'r').read()
+        else:
+            kernel_code_path = os.path.join(dir_path, 'mandelbrot_kernel.cl')
+            kernel_src = open(kernel_code_path, 'r').read()
         # Compile the kernel
-        self.prg = cl.Program(self.ctx, tfm_code + kernel_src).build()
+        self.prg = cl.Program(self.ctx, kernel_src).build()
             
 
     # export PYOPENCL_CTX='0:1'
@@ -79,7 +83,7 @@ class MandelbrotFuncs:
         step_size = (xmax - xmin) / xn
         print(f'mandelbrot_set_opencl: step_size: {step_size:.8f}')
         self.prg.mandelbrot(self.queue, shape, None, output_buf, c_palette,
-                            np.int32(maxiter), np.float32(horizon), np.int32(xn), np.int32(yn),
+                            np.int32(maxiter), np.float32(horizon*horizon), np.int32(xn), np.int32(yn),
                             np.float32(xmin), np.float32(ymin), np.float32(step_size))
 
         # Read results back to host
