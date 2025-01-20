@@ -1,4 +1,6 @@
+#include <assert.h>
 #include <ctype.h>
+#include <stdio.h>
 #include <string.h>
 #include "tfm_opencl.h"
 
@@ -493,4 +495,47 @@ void fp_mod_2d(const fp_int *a, int b, fp_int *c)
   /* clear the digit that is not completely outside/inside the modulus */
   c->dp[b / DIGIT_BIT] &= ~((fp_digit)0) >> (DIGIT_BIT - b);
   fp_clamp (c);
+}
+
+void fp_from_double(fp_int *result, double value) {
+    fp_word shift = 1UL << DIGIT_BIT;
+    fp_zero(result);
+    if (value < 0) {
+        result->sign = FP_NEG;
+        value = -value;
+    }
+    assert(value <= FP_MASK && "double must be less than 2^32");
+    int pos = (FP_SCALE_BITS / DIGIT_BIT);  // e.g. 2
+    result->used = pos + 1;
+    while (pos >= 0 && value > 0.0) {
+        result->dp[pos] = (fp_digit) value;
+        //printf("pos(0): %d  dp[pos]: %d\n", pos, result->dp[pos]);
+        value = value - result->dp[pos];
+        //printf("pos(1): %d  value: %f\n", pos, value);
+        value *= shift;
+        //printf("pos(2): %d  value: %f\n", pos, value);
+        --pos;
+    }
+    fp_clamp(result);
+}
+double fp_to_double(fp_int *num) {
+    fp_digit digit;
+    double result = 0.0;
+    double scale = 1.0;
+    //printf("result: %f  scale: %f\n", result, scale);
+    int count = 0;
+    int max_used = (FP_SCALE_BITS / DIGIT_BIT);  // e.g. 2
+    for (int i = max_used; i >=0; --i) {
+        digit = (i >= num->used) ? 0 : num->dp[i];
+        result += (digit * scale);
+        scale /= (1UL << 32);
+        //printf("i: %d  result: %f  scale: %f\n", i, result, scale);
+        if (count++ > 20) {
+            break;
+        }
+    }
+    if (num->sign == FP_NEG) {
+        result = - result;
+    }
+    return result;
 }

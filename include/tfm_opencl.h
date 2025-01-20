@@ -109,3 +109,15 @@ void fp_mul_2d(const fp_int *a, int b, fp_int *c);
 
 /* c = a mod 2**d */
 void fp_mod_2d(const fp_int *a, int b, fp_int *c);
+
+/**** Begin Floating Point functions *****/
+/* FP numbers are represented as int( num * 2**FP_SCALE_BITS )
+ */
+#define FP_SCALE_BITS 64
+
+/* converting from double to fp
+ * take the integer portion and create fp_int
+ * subtract that from value, etc.
+ */
+void fp_from_double(fp_int *result, double value);
+double fp_to_double(fp_int *num);
