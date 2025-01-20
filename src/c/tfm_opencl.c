@@ -1,9 +1,12 @@
-#include <assert.h>
+#ifdef __OPENCL_VERSION__
+// find some equivalent to our imports
+#else
+// normal C imports
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 #include "tfm_opencl.h"
-
+#endif
 
 /* tfm.c */
 
@@ -198,7 +201,7 @@ void fp_sub(const fp_int *a, const fp_int *b, fp_int *c)
 void s_fp_add(const fp_int *a, const fp_int *b, fp_int *c)
 {
   int      x, y, oldused;
-  register fp_word  t;
+  REGISTER fp_word  t;
 
   y       = MAX(a->used, b->used);
   oldused = MIN(c->used, FP_SIZE);
@@ -420,7 +423,7 @@ void fp_div_2d(const fp_int *a, int b, fp_int *c, fp_int *d)
     return;
   }
 
-  fp_init(&t);
+  fp_zero(&t);
 
   /* get the remainder */
   if (d != NULL) {
@@ -438,7 +441,7 @@ void fp_div_2d(const fp_int *a, int b, fp_int *c, fp_int *d)
   /* shift any bit count < DIGIT_BIT */
   D = (fp_digit) (b % DIGIT_BIT);
   if (D != 0) {
-    register fp_digit *tmpc, mask, shift;
+    REGISTER fp_digit *tmpc, mask, shift;
 
     /* mask */
     mask = (((fp_digit)1) << D) - 1;
@@ -504,7 +507,9 @@ void fp_from_double(fp_int *result, double value) {
         result->sign = FP_NEG;
         value = -value;
     }
-    assert(value <= FP_MASK && "double must be less than 2^32");
+    if (value > FP_MASK) {
+        fprintf(stderr, "double must be less than 2^32");
+    }
     int pos = (FP_SCALE_BITS / DIGIT_BIT);  // e.g. 2
     result->used = pos + 1;
     while (pos >= 0 && value > 0.0) {

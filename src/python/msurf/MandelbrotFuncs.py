@@ -38,11 +38,13 @@ class MandelbrotFuncs:
         self.queue = cl.CommandQueue(self.ctx)
         # OpenCL kernel code
         dir_path = os.path.dirname(os.path.realpath(__file__))
+        tfm_code = open('include/tfm_opencl.h', 'r').read()
+        tfm_code += open('src/c/tfm_opencl.c', 'r').read()
         kernel_code_path = os.path.join(dir_path, 'mandelbrot_kernel.cl')
         kernel_src = open(kernel_code_path, 'r').read()
 
         # Compile the kernel
-        self.prg = cl.Program(self.ctx, kernel_src).build()
+        self.prg = cl.Program(self.ctx, tfm_code + kernel_src).build()
 
     # export PYOPENCL_CTX='0:1'
     def mandelbrot_set_opencl(self, params: MandelbrotParams, horizon=2.0):

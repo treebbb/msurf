@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TFM_OPENCL_H
+#define TFM_OPENCL_H
 /* tfm.h */
 
 /* min / max */
@@ -49,11 +50,48 @@ typedef struct {
 } fp_int;
 
 /* initialize [or zero] an fp int */
+#ifdef __OPENCL_VERSION__
+/* OPENCL */
+#define NULL 0
+#define REGISTER
+unsigned long strlen(const char *str) {
+    int length = 0;
+    while (str[length] != '\0') {
+        length++;
+    }
+    return length;
+}
+int isdigit(char c);
+int isdigit(char c) {
+    return (c >= '0' && c <= '9');
+}
+#define fprintf(stream, format) ((void)0)
+#define fp_init(a) { \
+    for (int i = 0; i < FP_SIZE; i++) { \
+        (a)->dp[i] = 0; \
+    } \
+    (a)->used = 0; \
+    (a)->sign = 0; \
+}
+#define fp_copy(a, b) { \
+    if ((a) != (b)) { \
+        for (int i = 0; i < (a)->used; ++i) { \
+            (b)->dp[i] = (a)->dp[i]; \
+        } \
+        (b)->used = (a)->used; \
+        (b)->sign = (a)->sign; \
+    } \
+}
+#else
+/* REGULAR C */
+/* zero out fp_int */
+#define REGISTER register
 #define fp_init(a)  (void)memset((a), 0, sizeof(fp_int))
-#define fp_zero(a)  fp_init(a)
-
 /* copy from a to b */
 #define fp_copy(a, b)      (void)(((a) != (b)) && memcpy((b), (a), sizeof(fp_int)))
+#endif
+#define fp_zero(a)  fp_init(a)
+
 
 /* clamp digits */
 #define fp_clamp(a)   { while ((a)->used && (a)->dp[(a)->used-1] == 0) --((a)->used); (a)->sign = (a)->used ? (a)->sign : FP_ZPOS; }
@@ -121,3 +159,4 @@ void fp_mod_2d(const fp_int *a, int b, fp_int *c);
  */
 void fp_from_double(fp_int *result, double value);
 double fp_to_double(fp_int *num);
+#endif
