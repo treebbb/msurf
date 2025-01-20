@@ -290,7 +290,6 @@ void fp_mul_d(fp_int *a, fp_digit b, fp_int *c) {
     fp_int temp;
     int sign = a->sign;
     fp_zero(&temp);
-    
     fp_digit carry = 0;
     for (int i = 0; i < a->used; ++i) {
         fp_word prod = (fp_word)a->dp[i] * b + carry;
@@ -527,6 +526,50 @@ double fp_to_double(fp_int *num) {
     fp_digit digit;
     double result = 0.0;
     double scale = 1.0;
+    //printf("result: %f  scale: %f\n", result, scale);
+    int count = 0;
+    int max_used = (FP_SCALE_BITS / DIGIT_BIT);  // e.g. 2
+    for (int i = max_used; i >=0; --i) {
+        digit = (i >= num->used) ? 0 : num->dp[i];
+        result += (digit * scale);
+        scale /= (1UL << 32);
+        //printf("i: %d  result: %f  scale: %f\n", i, result, scale);
+        if (count++ > 20) {
+            break;
+        }
+    }
+    if (num->sign == FP_NEG) {
+        result = - result;
+    }
+    return result;
+}
+void fp_from_float(fp_int *result, float value) {
+    fp_word shift = 1UL << DIGIT_BIT;
+    fp_zero(result);
+    if (value < 0) {
+        result->sign = FP_NEG;
+        value = -value;
+    }
+    if (value > FP_MASK) {
+        fprintf(stderr, "float must be less than 2^32");
+    }
+    int pos = (FP_SCALE_BITS / DIGIT_BIT);  // e.g. 2
+    result->used = pos + 1;
+    while (pos >= 0 && value > 0.0) {
+        result->dp[pos] = (fp_digit) value;
+        //printf("pos(0): %d  dp[pos]: %d\n", pos, result->dp[pos]);
+        value = value - result->dp[pos];
+        //printf("pos(1): %d  value: %f\n", pos, value);
+        value *= shift;
+        //printf("pos(2): %d  value: %f\n", pos, value);
+        --pos;
+    }
+    fp_clamp(result);
+}
+float fp_to_float(fp_int *num) {
+    fp_digit digit;
+    float result = 0.0;
+    float scale = 1.0;
     //printf("result: %f  scale: %f\n", result, scale);
     int count = 0;
     int max_used = (FP_SCALE_BITS / DIGIT_BIT);  // e.g. 2

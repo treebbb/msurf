@@ -29,11 +29,16 @@
 #define FP_NO         0   /* no response */
 
 #ifndef FP_MAX_SIZE
-   #define FP_MAX_SIZE           (4096+(8*DIGIT_BIT))
+//   #define FP_MAX_SIZE           (4096+(8*DIGIT_BIT))
+#define FP_MAX_SIZE 128
 #endif
 
 #define CHAR_BIT 8                   /* bits per unsigned char */
+#ifdef __OPENCL_VERSION__
+typedef unsigned long ulong64;
+#else
 typedef unsigned long long ulong64;
+#endif
 typedef unsigned int       fp_digit; /* storage units */
 typedef ulong64            fp_word;  /* calculation units. Must be twice size of fp_digit */
 
@@ -73,14 +78,15 @@ int isdigit(char c) {
     (a)->used = 0; \
     (a)->sign = 0; \
 }
-#define fp_copy(a, b) { \
-    if ((a) != (b)) { \
-        for (int i = 0; i < (a)->used; ++i) { \
-            (b)->dp[i] = (a)->dp[i]; \
-        } \
-        (b)->used = (a)->used; \
-        (b)->sign = (a)->sign; \
-    } \
+void fp_copy(const fp_int *a, fp_int *b);
+void fp_copy(const fp_int *a, fp_int *b) {
+    if (a != b) {
+        for (int i = 0; i < a->used; ++i) {
+            b->dp[i] = a->dp[i];
+        }
+        b->sign = a->sign;
+        b->used = a->used;
+    }
 }
 #else
 /* REGULAR C */
@@ -159,4 +165,6 @@ void fp_mod_2d(const fp_int *a, int b, fp_int *c);
  */
 void fp_from_double(fp_int *result, double value);
 double fp_to_double(fp_int *num);
+void fp_from_float(fp_int *result, float value);
+float fp_to_float(fp_int *num);
 #endif

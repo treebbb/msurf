@@ -1,6 +1,10 @@
+#include <math.h>
 #include <stdio.h>
 #include "tfm_opencl.h"
 #include "bignum_test_framework.h"
+
+/* use 1e-7 for allowed_test error. */
+#define MAX_FLOAT_ROUNDTRIP_ERROR 0.0000001
 
 DEFINE_TEST(tfm_mul_2d_1) {
     fp_int a, b, c, expected;
@@ -195,6 +199,27 @@ DEFINE_TEST(tfm_fp_double_roundtrip_2) {
         result = fp_to_double(&a);
         diff = (d - result);
         assert(diff == 0 && "roundtrip 2");
+        d += 0.1;
+    }
+}
+DEFINE_TEST(tfm_fp_float_roundtrip_1) {
+    fp_int a;
+    float d, result, diff;
+    d = 3.1415926535897932; // pi(approx)
+    fp_from_float(&a, d);
+    result = fp_to_float(&a);
+    diff = fabs(d - result);
+    assert(diff < MAX_FLOAT_ROUNDTRIP_ERROR && "float roundtrip");
+}
+DEFINE_TEST(tfm_fp_float_roundtrip_2) {
+    fp_int a;
+    float d, result, diff;
+    d = -5.0000000001;
+    for (size_t i = 0; i < 100; ++i) {
+        fp_from_float(&a, d);
+        result = fp_to_float(&a);
+        diff = fabs(d - result);
+        assert(diff < MAX_FLOAT_ROUNDTRIP_ERROR && "roundtrip 2");
         d += 0.1;
     }
 }
