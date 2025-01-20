@@ -172,7 +172,11 @@ DEFINE_TEST(tfm_fp_from_double_3) {
     fp_int a, expected;
     int result_code;
     fp_from_double(&a, 3.1415926535897932); // pi(approx)
+    //printf("\na: \n");
+    //btl_tfm_print_internals(&a);
     fp_from_radix(&expected, "57952155664616980480"); // pi(approx) * (1<<64)
+    //printf("\nexpected: \n");
+    //btl_tfm_print_internals(&expected);
     result_code = fp_cmp(&a, &expected);
     assert(result_code == FP_EQ && "zero from double");
 }

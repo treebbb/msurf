@@ -2,7 +2,10 @@
 __kernel void mandelbrot(__global char *output,
                          __global char *palette,
                          const int maxiter, const float horizon_squared, const int width, const int height,
-                         const float xmin, const float ymin, const float step_size) {
+                         const float xmin1, const float xmin2, // large, small
+                         const float ymin1, const float ymin2,
+                         const float step_size1, const float step_size2
+    ) {
     const int x = get_global_id(0);
     const int y = get_global_id(1);
 

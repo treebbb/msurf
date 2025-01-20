@@ -262,7 +262,7 @@ void s_fp_sub(const fp_int *a, const fp_int *b, fp_int *c)
 void fp_from_radix(fp_int *a, const char *str) {
     // Initialize the fp_int structure
     fp_zero(a);
-    
+
     // Determine if the number is negative
     int is_negative = (str[0] == '-');
     if (is_negative) {
@@ -278,7 +278,7 @@ void fp_from_radix(fp_int *a, const char *str) {
 
         // Multiply the current value by 10
         fp_mul_d(a, 10, a);
-        
+
         // Add the new digit
         fp_add_d(a, str[i] - '0', a);
     }
@@ -505,7 +505,7 @@ void fp_mod_2d(const fp_int *a, int b, fp_int *c)
   fp_clamp (c);
 }
 
-void fp_from_double(fp_int *result, double value) {
+void fp_from_double_naive(fp_int *result, double value) {
     fp_word shift = 1UL << DIGIT_BIT;
     fp_zero(result);
     if (value < 0) {
@@ -528,6 +528,61 @@ void fp_from_double(fp_int *result, double value) {
     }
     fp_clamp(result);
 }
+// Mask to extract the fraction part (52 bits)
+#define DOUBLE_FRACTION_MASK 0x000FFFFFFFFFFFFF // lowest 52 bits
+#define DOUBLE_FRACTION_ONE  0x0010000000000000 // bit 53 (1 + fraction)
+// Mask to extract the exponent part (11 bits)
+#define DOUBLE_EXPONENT_MASK 0x7FF0000000000000 // bits 1-12
+#define DOUBLE_FRACTION_VALUE_BITS 52
+union DoubleBits {
+    double d;
+    ulong64 u64;
+};
+void fp_from_double(fp_int *result, double value) {
+    // union to do bit operations
+    union DoubleBits db;
+    db.d = value;
+
+    // Extract the fraction part
+    ulong64 fraction = DOUBLE_FRACTION_ONE + (db.u64 & DOUBLE_FRACTION_MASK);
+
+    // Extract the exponent part and unbias it
+    ulong64 exponent_orig = (db.u64 & DOUBLE_EXPONENT_MASK) >> (DOUBLE_FRACTION_VALUE_BITS);
+
+    // Subtract the bias (1023 for double precision)
+    int exponent = exponent_orig - 1023;
+
+    int64_t total_shift_left = exponent + (FP_SCALE_BITS - DOUBLE_FRACTION_VALUE_BITS);
+
+    // now set fp_int
+    fp_zero(result);
+    // FP_SCALE_BITS
+    int highest_bit = DOUBLE_FRACTION_VALUE_BITS + 1 + total_shift_left;
+    int max_pos = highest_bit / DIGIT_BIT;
+    if (max_pos < 0) {
+        // nothing big enough to set into dp[0]
+        return;
+    }
+    int shift_right = (max_pos * DIGIT_BIT) - total_shift_left;
+    for (int i = max_pos; i >= 0 && shift_right > -63; i--) {
+        ulong64 val;
+        if (shift_right > 0) {
+            val = (fraction >> shift_right) & FP_MASK;
+        } else if (shift_right < 0) {
+            val = (fraction << (-shift_right)) & FP_MASK;
+        } else {
+            val = (fraction & FP_MASK);
+        }
+
+        result->dp[i] = val;
+        //printf("  i: %d  val: %llu  dp[i]: %d  shift_right: %d \n", i, val, result->dp[i], shift_right);
+        shift_right -= DIGIT_BIT;
+    }
+    result->used = max_pos + 1;
+    result->sign = (int) (db.u64 >> 63);
+    fp_clamp(result);
+}
+
 double fp_to_double(fp_int *num) {
     fp_digit digit;
     double result = 0.0;
