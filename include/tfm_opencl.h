@@ -31,17 +31,15 @@
    #define FP_MAX_SIZE           (4096+(8*DIGIT_BIT))
 #endif
 
-#define CHAR_BIT 8
+#define CHAR_BIT 8                   /* bits per unsigned char */
 typedef unsigned long long ulong64;
-typedef unsigned int       fp_digit;
-typedef ulong64            fp_word;
-#define SIZEOF_FP_DIGIT 4
-#define DIGIT_SHIFT     5
+typedef unsigned int       fp_digit; /* storage units */
+typedef ulong64            fp_word;  /* calculation units. Must be twice size of fp_digit */
 
 /* # of digits this is */
-#define DIGIT_BIT  ((CHAR_BIT) * SIZEOF_FP_DIGIT)
-#define FP_MASK    (fp_digit)(-1)
-#define FP_SIZE    (FP_MAX_SIZE/DIGIT_BIT)
+#define DIGIT_BIT  (int)((CHAR_BIT) * sizeof(fp_digit)) /* bits per fp_digit */
+#define FP_MASK    (fp_digit)(-1)                       /* 2^DIGIT_BIT - 1 */
+#define FP_SIZE    (FP_MAX_SIZE/DIGIT_BIT)              /* size of "dp" storage array */
 
 /* a FP type */
 typedef struct {
