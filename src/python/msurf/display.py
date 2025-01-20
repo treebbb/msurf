@@ -649,7 +649,8 @@ def main():
     root = tk.Tk()
     root.title("Interactive Mandelbrot Set Display")
     root.resizable(True, True)
-    display = InteractiveImageDisplay(root, 800, 600)
+    #display = InteractiveImageDisplay(root, 800, 600)
+    display = InteractiveImageDisplay(root, 200, 150)
     display.update_status('Ready to explore the Mandelbrot set')
     root.mainloop()
 

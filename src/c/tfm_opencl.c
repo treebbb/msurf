@@ -93,7 +93,6 @@ void fp_mul(const fp_int *A, const fp_int *B, fp_int *C)
 void fp_mul_scaled(const fp_int *a, const fp_int *b, fp_int *c) {
     fp_mul(a, b, c);
     int scale_digits = (FP_SCALE_BITS / DIGIT_BIT);  // e.g. 2
-    printf("scale_digits: %d", scale_digits);
     fp_rshd(c, scale_digits);
 }
 

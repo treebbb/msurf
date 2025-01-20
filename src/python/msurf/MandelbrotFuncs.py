@@ -77,6 +77,7 @@ class MandelbrotFuncs:
         # Execute the kernel
         shape = (xn, yn)
         step_size = (xmax - xmin) / xn
+        print(f'mandelbrot_set_opencl: step_size: {step_size:.8f}')
         self.prg.mandelbrot(self.queue, shape, None, output_buf, c_palette,
                             np.int32(maxiter), np.float32(horizon), np.int32(xn), np.int32(yn),
                             np.float32(xmin), np.float32(ymin), np.float32(step_size))
