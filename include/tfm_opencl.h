@@ -162,7 +162,11 @@ void fp_mod_2d(const fp_int *a, int b, fp_int *c);
 /**** Begin Floating Point functions *****/
 /* FP numbers are represented as int( num * 2**FP_SCALE_BITS )
  */
+// FP_SCALE_BITS: floating points are multiplied by 2**FP_SCALE_BITS
+// must be an even multiple of DIGIT_BIT
 #define FP_SCALE_BITS 64
+// FP_SCALE_SHIFT_FP_DIGITS is the number of dp[] positions to shift
+#define FP_SCALE_SHIFT_FP_DIGITS (FP_SCALE_BITS / DIGIT_BIT)  // e.g. 2#
 
 /* converting from double to fp
  * take the integer portion and create fp_int

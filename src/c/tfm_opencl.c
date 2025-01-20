@@ -92,8 +92,7 @@ void fp_mul(const fp_int *A, const fp_int *B, fp_int *C)
 /* multiply and then scale to keep float scale consistent */
 void fp_mul_scaled(const fp_int *a, const fp_int *b, fp_int *c) {
     fp_mul(a, b, c);
-    int scale_digits = (FP_SCALE_BITS / DIGIT_BIT);  // e.g. 2
-    fp_rshd(c, scale_digits);
+    fp_rshd(c, FP_SCALE_SHIFT_FP_DIGITS);
 }
 
 /* fp_cmp */
@@ -516,7 +515,7 @@ void fp_from_double(fp_int *result, double value) {
     if (value > FP_MASK) {
         fprintf(stderr, "double must be less than 2^32");
     }
-    int pos = (FP_SCALE_BITS / DIGIT_BIT);  // e.g. 2
+    int pos = FP_SCALE_SHIFT_FP_DIGITS;
     result->used = pos + 1;
     while (pos >= 0 && value > 0.0) {
         result->dp[pos] = (fp_digit) value;
@@ -535,7 +534,7 @@ double fp_to_double(fp_int *num) {
     double scale = 1.0;
     //printf("result: %f  scale: %f\n", result, scale);
     int count = 0;
-    int max_used = (FP_SCALE_BITS / DIGIT_BIT);  // e.g. 2
+    int max_used = FP_SCALE_SHIFT_FP_DIGITS;
     for (int i = max_used; i >=0; --i) {
         digit = (i >= num->used) ? 0 : num->dp[i];
         result += (digit * scale);
@@ -560,7 +559,7 @@ void fp_from_float(fp_int *result, float value) {
     if (value > FP_MASK) {
         fprintf(stderr, "float must be less than 2^32");
     }
-    int pos = (FP_SCALE_BITS / DIGIT_BIT);  // e.g. 2
+    int pos = FP_SCALE_SHIFT_FP_DIGITS;
     result->used = pos + 1;
     while (pos >= 0 && value > 0.0) {
         result->dp[pos] = (fp_digit) value;
@@ -579,7 +578,7 @@ float fp_to_float(fp_int *num) {
     float scale = 1.0;
     //printf("result: %f  scale: %f\n", result, scale);
     int count = 0;
-    int max_used = (FP_SCALE_BITS / DIGIT_BIT);  // e.g. 2
+    int max_used = FP_SCALE_SHIFT_FP_DIGITS;
     for (int i = max_used; i >=0; --i) {
         digit = (i >= num->used) ? 0 : num->dp[i];
         result += (digit * scale);
