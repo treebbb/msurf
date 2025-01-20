@@ -5,7 +5,6 @@
 
 /* use 1e-7 for allowed_test error. */
 #define MAX_FLOAT_ROUNDTRIP_ERROR 0.0000001
-
 DEFINE_TEST(tfm_mul_2d_1) {
     fp_int a, b, c, expected;
     fp_zero(&a);
@@ -117,7 +116,7 @@ DEFINE_TEST(tfm_add4) {
     fp_from_radix(&expected, "-21474836470");
     assert(fp_cmp(&a, &expected) == FP_EQ && "equals zero");    
 }
-DEFINE_TEST(tfm_multiply1) {
+DEFINE_TEST(tfm_fp_mul_1) {
     int result_code;
     fp_int a, b, c, expected;
     fp_from_radix(&a, "-1");
@@ -127,7 +126,7 @@ DEFINE_TEST(tfm_multiply1) {
     result_code = fp_cmp(&c, &expected);
     assert(result_code == FP_EQ && "result code");    
 }
-DEFINE_TEST(tfm_multiply2) {
+DEFINE_TEST(tfm_fp_mul_2) {
     int result_code;
     fp_int a, b, c, expected;
     fp_zero(&b);
@@ -140,6 +139,17 @@ DEFINE_TEST(tfm_multiply2) {
     }
     fp_from_radix(&expected, "-79228162458924105385300197375"); // 0 - (FP_MASK ^ 3)
     result_code = fp_cmp(&a, &expected);
+    assert(result_code == FP_EQ && "result code");    
+}
+DEFINE_TEST(tfm_fp_mul_3) {
+    int result_code;
+    fp_int a, b, c, expected;
+    fp_from_radix(&a, "46116860184273879040"); // 2.5 * 2**64
+    fp_from_radix(&b, "2049617734029868269568"); // 111.11 * 2**64
+    fp_from_radix(&expected, "5124044335074670673920"); // (2.5 * 111.11) * 2**64
+    fp_lshd(&expected, 2); // shift left 2 fp_digits (2**64) to account for multiplication
+    fp_mul(&a, &b, &c);
+    result_code = fp_cmp(&c, &expected);
     assert(result_code == FP_EQ && "result code");    
 }
 DEFINE_TEST(tfm_fp_from_double_1) {
@@ -222,6 +232,20 @@ DEFINE_TEST(tfm_fp_float_roundtrip_2) {
         assert(diff < MAX_FLOAT_ROUNDTRIP_ERROR && "roundtrip 2");
         d += 0.1;
     }
+}
+DEFINE_TEST(tfm_fp_mul_scaled_1) {
+    fp_int a, b, c, c_orig;
+    double d1, d2, expected, result, diff;
+    d1 = 2.5;
+    d2 = 111.11;
+    fp_from_double(&a, d1);
+    fp_from_double(&b, d2);
+    fp_mul(&a, &b, &c_orig);
+    fp_mul_scaled(&a, &b, &c);
+    result = fp_to_double(&c);
+    expected = d1 * d2;
+    diff = fabs(result - expected);
+    assert(diff == 0 && "fp_mul_scaled_1");
 }
 int main() {
     printf("HELLO from test_tfm.c\n");

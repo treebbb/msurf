@@ -89,6 +89,14 @@ void fp_mul(const fp_int *A, const fp_int *B, fp_int *C)
   fp_copy(dst, C);
 }
 
+/* multiply and then scale to keep float scale consistent */
+void fp_mul_scaled(const fp_int *a, const fp_int *b, fp_int *c) {
+    fp_mul(a, b, c);
+    int scale_digits = (FP_SCALE_BITS / DIGIT_BIT);  // e.g. 2
+    printf("scale_digits: %d", scale_digits);
+    fp_rshd(c, scale_digits);
+}
+
 /* fp_cmp */
 int fp_cmp(const fp_int *a, const fp_int *b)
 {

@@ -30,7 +30,11 @@
 
 #ifndef FP_MAX_SIZE
 //   #define FP_MAX_SIZE           (4096+(8*DIGIT_BIT))
-#define FP_MAX_SIZE 128
+/* 192 (6 fp_digits)
+ * is the minimum size to multiply fp_ints with 3 fp_digits
+ * e.g. a fixed-point float shifted (1<<64) has dp[2][1][0]
+ */
+#define FP_MAX_SIZE 192
 #endif
 
 #define CHAR_BIT 8                   /* bits per unsigned char */
@@ -123,6 +127,7 @@ void fp_sub(const fp_int *a, const fp_int *b, fp_int *c);
 
 /* c = a * b */
 void fp_mul(const fp_int *a, const fp_int *b, fp_int *c);
+void fp_mul_scaled(const fp_int *a, const fp_int *b, fp_int *c);
 
 /* b = a*a  */
 void fp_sqr(const fp_int *a, fp_int *b);
