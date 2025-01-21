@@ -180,6 +180,15 @@ DEFINE_TEST(tfm_fp_from_double_3) {
     result_code = fp_cmp(&a, &expected);
     assert(result_code == FP_EQ && "zero from double");
 }
+DEFINE_TEST(tfm_fp_from_double_4) {
+    union DoubleBits db1, db2;
+    db1.d = 3.141592653589793;
+    //printf("\ndb.u64: %llu  db.d: %lf\n", db1.u64, db1.d);
+    db2.u64 = 4614256656552045848;
+    //printf("\ndb.u64: %llu  db.d: %lf\n", db2.u64, db2.d);
+    assert(db1.u64 == db2.u64 && "double to uint64 bits correct");
+    assert(db2.d == db2.d && "uint64 to double bits correct");
+}
 DEFINE_TEST(tfm_fp_to_double_1) {
     fp_int a;
     double d;

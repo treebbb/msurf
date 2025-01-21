@@ -541,10 +541,6 @@ void fp_from_double_naive(fp_int *result, double value) {
 #define DOUBLE_BIAS 1023
 #define DOUBLE_EXPONENT_MASK 0x7FF0000000000000 // bits 1-12
 #define DOUBLE_SIGN_MASK     0x8000000000000000 // sign bit
-union DoubleBits {
-    double d;
-    uint64_t u64;
-};
 void fp_from_double(fp_int *result, double value) {
     // union to do bit operations
     union DoubleBits db;
@@ -613,10 +609,6 @@ double fp_to_double(fp_int *num) {
 #define FLOAT_BIAS                127
 #define FLOAT_EXPONENT_MASK       0x7F800000 // bits 1-8
 #define FLOAT_SIGN_MASK           0x80000000 // sign bit
-union FloatBits {
-    float f;
-    uint32_t u32;
-};
 
 void fp_from_float(fp_int *result, float value) {
     // Union to do bit operations

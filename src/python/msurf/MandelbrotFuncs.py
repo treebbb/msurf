@@ -2,9 +2,38 @@ from MandelbrotParams import MandelbrotParams
 import numpy as np
 import os
 import pyopencl as cl
+import struct
 
 
 MAX_MAXITER = (2 << 30) / 256 # 2^31 / 256. limited by 32 bit signed ints in opencl
+
+def double_to_fp_int_array(float_value):
+    '''
+    opencl doesn't always have a double type, but it has uint64.
+    multiply the float_value by 2**64
+    return two uint64 values (hi, lo)
+
+    The top bit of hi is one if negative, zero otherwise
+    fp_int.dp[3] = (hi >> 32) & 0x7FFFFFFF  // this should be 0 for mandelbrot
+    fp_int.dp[2] = hi & FP_MASK
+    fp_int.dp[1] = lo >> 32
+    fp_int.dp[0] = lo & FP_MASK
+
+    '''
+    # Pack the float into bytes in IEEE 754 double-precision format
+    sign = (float_value < 0)  # true if negative
+    float_value = abs(float_value)
+    intval = int(float_value * (1<<64))
+    hi = intval >> 64
+    lo = intval & ((1<<64) - 1)
+    # If negative, set the MSB to 1
+    if sign:
+        # The mask for the MSB in a 64-bit integer is 0x8000000000000000
+        hi |= 0x8000000000000000
+    else:
+        # If sign is False, clear the MSB
+        hi &= ~0x8000000000000000
+    return (hi, lo)
 
 def mandelbrot_set(params: MandelbrotParams, horizon=2.0):
     xmin, xmax, ymin, ymax, xn, yn, maxiter = params.xmin, params.xmax, params.ymin, params.ymax, params.width, params.height, params.maxiter
@@ -28,6 +57,7 @@ def mandelbrot_set(params: MandelbrotParams, horizon=2.0):
     return mandelbrot
 
 class MandelbrotFuncs:
+    use_tfm = 1  # high precision TFM library
 
     def __init__(self):
         self.init_opencl()
@@ -38,8 +68,7 @@ class MandelbrotFuncs:
         self.queue = cl.CommandQueue(self.ctx)
         # OpenCL kernel code
         dir_path = os.path.dirname(os.path.realpath(__file__))
-        use_tfm = 1
-        if use_tfm:
+        if self.use_tfm:
             tfm_code = open('include/tfm_opencl.h', 'r').read()
             tfm_code += open('src/c/tfm_opencl.c', 'r').read()
             kernel_code_path = os.path.join(dir_path, 'mandelbrot_kernel_tfm.cl')
@@ -81,11 +110,28 @@ class MandelbrotFuncs:
         # Execute the kernel
         shape = (xn, yn)
         step_size = (xmax - xmin) / xn
-        print(f'mandelbrot_set_opencl: step_size: {step_size:.8f}')
-        self.prg.mandelbrot(self.queue, shape, None, output_buf, c_palette,
-                            np.int32(maxiter), np.float32(horizon*horizon), np.int32(xn), np.int32(yn),
-                            np.float32(xmin), np.float32(ymin), np.float32(step_size))
-
+        if self.use_tfm:
+            # call tfm with high-precision xmin, ymin, step_size
+            step_size_hi, step_size_lo = double_to_fp_int_array(step_size)
+            xmin_hi, xmin_lo = double_to_fp_int_array(xmin)
+            ymin_hi, ymin_lo = double_to_fp_int_array(ymin)
+            print(step_size, step_size_hi, step_size_lo)
+            print(xmin, xmin_hi, xmin_lo)
+            print(ymin, ymin_hi, ymin_lo)
+            print(f'mandelbrot_set_opencl: step_size: {step_size:.8f}')
+            self.prg.mandelbrot(self.queue, shape, None, output_buf, c_palette,
+                                np.int32(maxiter), np.float32(horizon*horizon), np.int32(xn), np.int32(yn),
+                                np.uint64(xmin_hi), np.uint64(xmin_lo),
+                                np.uint64(ymin_hi), np.uint64(ymin_lo),
+                                np.uint64(step_size_hi), np.uint64(step_size_lo),
+                                )
+        else:
+            # call non-tfm with float32 for xmin, ymin, step_size
+            self.prg.mandelbrot(self.queue, shape, None, output_buf, c_palette,
+                                np.int32(maxiter), np.float32(horizon*horizon), np.int32(xn), np.int32(yn),
+                                np.float32(xmin), np.float32(ymin), np.float32(step_size)
+                                )
+            
         # Read results back to host
         cl.enqueue_copy(self.queue, mandelbrot, output_buf)
         # Cleanup

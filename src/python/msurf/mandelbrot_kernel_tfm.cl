@@ -1,26 +1,39 @@
 
+void fp_from_hi_lo(fp_int *dest, uint64_t val_hi, uint64_t val_lo);
+void fp_from_hi_lo(fp_int *dest, uint64_t val_hi, uint64_t val_lo) {
+    dest->used = 3;
+    dest->sign = (val_hi >> 63) ? FP_NEG : FP_ZPOS;
+    dest->dp[2] = val_hi & FP_MASK;
+    dest->dp[1] = val_lo >> 32;
+    dest->dp[0] = val_lo & FP_MASK;
+    fp_clamp(dest);
+}
+
 __kernel void mandelbrot(__global char *output,
                          __global char *palette,
                          const int maxiter, const float horizon_squared, const int width, const int height,
-                         const float xmin, const float ymin, const float step_size) {
+                         const uint64_t xmin_hi, const uint64_t xmin_lo,
+                         const uint64_t ymin_hi, const uint64_t ymin_lo,
+                         const uint64_t step_size_hi, const uint64_t step_size_lo
+    ) {
     const int x = get_global_id(0);
     const int y = get_global_id(1);
     int i = 0;
     // fmaf(a, b, c) is equivalent to (a * b) + c, but with better rounding
     fp_int z_real, z_imag, z_real_squared, z_imag_squared, c_real, c_imag, temp_fp;
     // set c_real to step_size
-    fp_from_float(&c_real, step_size);
+    fp_from_hi_lo(&c_real, step_size_hi, step_size_lo);
     // copy step_size to c_imag (faster than re-parse float)
     fp_copy(&c_real, &c_imag);
     // c_real * x
     fp_mul_d(&c_real, x, &c_real);
     // c_real + xmin
-    fp_from_float(&temp_fp, xmin);
+    fp_from_hi_lo(&temp_fp, xmin_hi, xmin_lo);
     fp_add(&c_real, &temp_fp, &c_real);
     // c_imag * y
     fp_mul_d(&c_imag, y, &c_imag);
     // c_imag + ymin
-    fp_from_float(&temp_fp, ymin);
+    fp_from_hi_lo(&temp_fp, ymin_hi, ymin_lo);
     fp_add(&c_imag, &temp_fp, &c_imag);
 
     fp_zero(&z_real);
@@ -29,6 +42,7 @@ __kernel void mandelbrot(__global char *output,
     fp_zero(&z_imag_squared);
 
     for(i = 0; i < maxiter; i++) {
+        // this horizon_check may introduce artifacts compared to the float implementation
         fp_digit horizon_check = z_real_squared.dp[FP_SCALE_SHIFT_FP_DIGITS];
         horizon_check += z_imag_squared.dp[FP_SCALE_SHIFT_FP_DIGITS];
         if(horizon_check > horizon_squared)  break;

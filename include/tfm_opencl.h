@@ -39,6 +39,7 @@
 
 #define CHAR_BIT 8                   /* bits per unsigned char */
 #ifdef __OPENCL_VERSION__
+// opencl
 typedef unsigned long ulong64;
 typedef signed long long64;
 typedef unsigned long uint64_t;
@@ -46,6 +47,7 @@ typedef signed long int64_t;
 typedef unsigned int uint32_t;
 typedef signed int int32_t;
 #else
+// gcc
 typedef unsigned long long ulong64;
 typedef long long long64;
 typedef unsigned long long uint64_t;
@@ -67,6 +69,16 @@ typedef struct {
     int      used,
              sign;
 } fp_int;
+
+/* helper types for conversions */
+union FloatBits {
+    float f;
+    uint32_t u32;
+};
+union DoubleBits {
+    double d;
+    uint64_t u64;
+};
 
 /* initialize [or zero] an fp int */
 #ifdef __OPENCL_VERSION__
