@@ -25,14 +25,14 @@ __kernel void mandelbrot(__global char *output,
     fp_from_hi_lo(&c_real, step_size_hi, step_size_lo);
     // copy step_size to c_imag (faster than re-parse float)
     fp_copy(&c_real, &c_imag);
-    // c_real * x
+    // c_real = step_size * x
     fp_mul_d(&c_real, x, &c_real);
-    // c_real + xmin
+    // c_real = step_size * x + xmin
     fp_from_hi_lo(&temp_fp, xmin_hi, xmin_lo);
     fp_add(&c_real, &temp_fp, &c_real);
-    // c_imag * y
+    // c_imag = step_size * y
     fp_mul_d(&c_imag, y, &c_imag);
-    // c_imag + ymin
+    // c_imag = (step_size * y) + ymin
     fp_from_hi_lo(&temp_fp, ymin_hi, ymin_lo);
     fp_add(&c_imag, &temp_fp, &c_imag);
 
@@ -47,17 +47,18 @@ __kernel void mandelbrot(__global char *output,
         horizon_check += z_imag_squared.dp[FP_SCALE_SHIFT_FP_DIGITS];
         if(horizon_check > horizon_squared)  break;
 
-        //z_imag = 2.0f * z_real * z_imag + c_imag;
-        // z_imag = FP_FMAF(FP_MUL2(z_real), z_imag, c_imag);
-        fp_mul_d(&z_real, 2, &temp_fp);
-        fp_mul_scaled(&temp_fp, &z_imag, &temp_fp);
-        fp_add(&temp_fp, &c_imag, &z_imag);
-        
-        //z_real = FP_ADD(FP_SUB(z_real_squared, z_imag_squared), c_real);
-        fp_sub(&z_real_squared, &z_imag_squared, &temp_fp);
-        fp_add(&temp_fp, &c_real, &z_real);
+        // z_imag = 2.0 * z_real * z_imag + c_imag
+        fp_mul_2d(&z_real, 1, &temp_fp);  // temp = z_real * 2
+        fp_mul_scaled(&temp_fp, &z_imag, &temp_fp); // temp = temp * z_imag
+        fp_add(&temp_fp, &c_imag, &z_imag);  // z_imag = temp + c_imag
 
+        // z_real = z_real_squared - z_imag_squared + c_real
+        fp_sub(&z_real_squared, &z_imag_squared, &temp_fp);  // temp = z_real_squared - z_imag_squared
+        fp_add(&temp_fp, &c_real, &z_real);  // z_real = temp + c_real
+
+        // z_real_squared = z_real * z_real
         fp_mul_scaled(&z_real, &z_real, &z_real_squared);
+        // z_imag_squared = z_imag * z_imag
         fp_mul_scaled(&z_imag, &z_imag, &z_imag_squared);
     }
      // 8-bit rgb output
