@@ -38,7 +38,7 @@ class MandelbrotFuncs:
         self.queue = cl.CommandQueue(self.ctx)
         # OpenCL kernel code
         dir_path = os.path.dirname(os.path.realpath(__file__))
-        use_tfm = 0
+        use_tfm = 1
         if use_tfm:
             tfm_code = open('include/tfm_opencl.h', 'r').read()
             tfm_code += open('src/c/tfm_opencl.c', 'r').read()

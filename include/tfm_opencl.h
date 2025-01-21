@@ -40,8 +40,18 @@
 #define CHAR_BIT 8                   /* bits per unsigned char */
 #ifdef __OPENCL_VERSION__
 typedef unsigned long ulong64;
+typedef signed long long64;
+typedef unsigned long uint64_t;
+typedef signed long int64_t;
+typedef unsigned int uint32_t;
+typedef signed int int32_t;
 #else
 typedef unsigned long long ulong64;
+typedef long long long64;
+typedef unsigned long long uint64_t;
+typedef long long int64_t;
+typedef unsigned int uint32_t;
+typedef signed int int32_t;
 #endif
 typedef unsigned int       fp_digit; /* storage units */
 typedef ulong64            fp_word;  /* calculation units. Must be twice size of fp_digit */

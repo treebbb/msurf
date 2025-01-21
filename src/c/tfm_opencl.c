@@ -528,15 +528,22 @@ void fp_from_double_naive(fp_int *result, double value) {
     }
     fp_clamp(result);
 }
-// Mask to extract the fraction part (52 bits)
+
+/* Fraction is in the lowest 52 bits.
+   fraction value = 1 + Fraction / (1<<52) */
 #define DOUBLE_FRACTION_MASK 0x000FFFFFFFFFFFFF // lowest 52 bits
 #define DOUBLE_FRACTION_ONE  0x0010000000000000 // bit 53 (1 + fraction)
-// Mask to extract the exponent part (11 bits)
-#define DOUBLE_EXPONENT_MASK 0x7FF0000000000000 // bits 1-12
 #define DOUBLE_FRACTION_VALUE_BITS 52
+
+/* exponent is stored in bits 1-12
+ * abs(value) = (fraction val) * 2**(exponent - DOUBLE_BIAS)
+ */
+#define DOUBLE_BIAS 1023
+#define DOUBLE_EXPONENT_MASK 0x7FF0000000000000 // bits 1-12
+#define DOUBLE_SIGN_MASK     0x8000000000000000 // sign bit
 union DoubleBits {
     double d;
-    ulong64 u64;
+    uint64_t u64;
 };
 void fp_from_double(fp_int *result, double value) {
     // union to do bit operations
@@ -544,28 +551,24 @@ void fp_from_double(fp_int *result, double value) {
     db.d = value;
 
     // Extract the fraction part
-    ulong64 fraction = DOUBLE_FRACTION_ONE + (db.u64 & DOUBLE_FRACTION_MASK);
+    uint64_t fraction = DOUBLE_FRACTION_ONE + (db.u64 & DOUBLE_FRACTION_MASK);
 
     // Extract the exponent part and unbias it
-    ulong64 exponent_orig = (db.u64 & DOUBLE_EXPONENT_MASK) >> (DOUBLE_FRACTION_VALUE_BITS);
+    long64 exponent = ((db.u64 & DOUBLE_EXPONENT_MASK) >> DOUBLE_FRACTION_VALUE_BITS) - DOUBLE_BIAS;
 
-    // Subtract the bias (1023 for double precision)
-    int exponent = exponent_orig - 1023;
-
-    int64_t total_shift_left = exponent + (FP_SCALE_BITS - DOUBLE_FRACTION_VALUE_BITS);
+    long64 total_shift_left = exponent + (FP_SCALE_BITS - DOUBLE_FRACTION_VALUE_BITS);
 
     // now set fp_int
     fp_zero(result);
-    // FP_SCALE_BITS
     int highest_bit = DOUBLE_FRACTION_VALUE_BITS + 1 + total_shift_left;
     int max_pos = highest_bit / DIGIT_BIT;
     if (max_pos < 0) {
-        // nothing big enough to set into dp[0]
+        // return zero. nothing big enough to set into dp array
         return;
     }
     int shift_right = (max_pos * DIGIT_BIT) - total_shift_left;
-    for (int i = max_pos; i >= 0 && shift_right > -63; i--) {
-        ulong64 val;
+    for (int i = max_pos; i >= 0; i--) {
+        uint64_t val;
         if (shift_right > 0) {
             val = (fraction >> shift_right) & FP_MASK;
         } else if (shift_right < 0) {
@@ -573,13 +576,12 @@ void fp_from_double(fp_int *result, double value) {
         } else {
             val = (fraction & FP_MASK);
         }
-
         result->dp[i] = val;
         //printf("  i: %d  val: %llu  dp[i]: %d  shift_right: %d \n", i, val, result->dp[i], shift_right);
         shift_right -= DIGIT_BIT;
     }
     result->used = max_pos + 1;
-    result->sign = (int) (db.u64 >> 63);
+    result->sign = (db.u64 & DOUBLE_SIGN_MASK) ? FP_NEG : FP_ZPOS;
     fp_clamp(result);
 }
 
@@ -604,29 +606,58 @@ double fp_to_double(fp_int *num) {
     }
     return result;
 }
+#define FLOAT_FRACTION_MASK       0x007FFFFF // lowest 23 bits
+#define FLOAT_FRACTION_ONE        0x00800000 // bit 24 (1 + fraction)
+#define FLOAT_FRACTION_VALUE_BITS 23
+
+#define FLOAT_BIAS                127
+#define FLOAT_EXPONENT_MASK       0x7F800000 // bits 1-8
+#define FLOAT_SIGN_MASK           0x80000000 // sign bit
+union FloatBits {
+    float f;
+    uint32_t u32;
+};
+
 void fp_from_float(fp_int *result, float value) {
-    fp_word shift = 1UL << DIGIT_BIT;
+    // Union to do bit operations
+    union FloatBits fb;
+    fb.f = value;
+
+    // Extract the fraction part
+    uint32_t fraction = FLOAT_FRACTION_ONE + (fb.u32 & FLOAT_FRACTION_MASK);
+
+    // Extract the exponent part and unbias it
+    int32_t exponent = ((fb.u32 & FLOAT_EXPONENT_MASK) >> FLOAT_FRACTION_VALUE_BITS) - FLOAT_BIAS;
+
+    // Compute the total shift left, adjusting for FP_SCALE_BITS and FLOAT_FRACTION_VALUE_BITS
+    int64_t total_shift_left = exponent + (FP_SCALE_BITS - FLOAT_FRACTION_VALUE_BITS);
+
+    // Now set fp_int
     fp_zero(result);
-    if (value < 0) {
-        result->sign = FP_NEG;
-        value = -value;
+    int highest_bit = FLOAT_FRACTION_VALUE_BITS + 1 + total_shift_left;
+    int max_pos = highest_bit / DIGIT_BIT;
+    if (max_pos < 0) {
+        // Return zero if nothing big enough to set into dp array
+        return;
     }
-    if (value > FP_MASK) {
-        fprintf(stderr, "float must be less than 2^32");
+    int shift_right = (max_pos * DIGIT_BIT) - total_shift_left;
+    for (int i = max_pos; i >= 0; i--) {
+        uint64_t val;
+        if (shift_right > 0) {
+            val = ((uint64_t)fraction >> shift_right) & FP_MASK;
+        } else if (shift_right < 0) {
+            val = ((uint64_t)fraction << (-shift_right)) & FP_MASK;
+        } else {
+            val = ((uint64_t)fraction & FP_MASK);
+        }
+        result->dp[i] = val;
+        shift_right -= DIGIT_BIT;
     }
-    int pos = FP_SCALE_SHIFT_FP_DIGITS;
-    result->used = pos + 1;
-    while (pos >= 0 && value > 0.0) {
-        result->dp[pos] = (fp_digit) value;
-        //printf("pos(0): %d  dp[pos]: %d\n", pos, result->dp[pos]);
-        value = value - result->dp[pos];
-        //printf("pos(1): %d  value: %f\n", pos, value);
-        value *= shift;
-        //printf("pos(2): %d  value: %f\n", pos, value);
-        --pos;
-    }
+    result->used = max_pos + 1;
+    result->sign = (fb.u32 & FLOAT_SIGN_MASK) ? FP_NEG : FP_ZPOS;
     fp_clamp(result);
 }
+
 float fp_to_float(fp_int *num) {
     fp_digit digit;
     float result = 0.0;
