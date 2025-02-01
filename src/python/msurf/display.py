@@ -415,7 +415,7 @@ class InteractiveImageDisplay:
         operations_per_second = 10000000
         pixels_per_second = (time_limit * operations_per_second) / self.params.maxiter
         tile_size = int(math.sqrt(pixels_per_second))
-        # tile_size = 128
+        tile_size = 10000
         gen = self.params.tile_iter(tile_size)
         self.generate_and_display_tiles(gen)
         # Update status text position

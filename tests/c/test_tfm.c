@@ -134,11 +134,11 @@ DEFINE_TEST(tfm_add5) {
     fp_int step_size, ymin, c_imag, expected;
     fp_from_double(&step_size, 2.7498992666297184e-12);
     printf("\nstep_size: %lf\n", fp_to_double(&step_size));
-    btl_tfm_print_internals(&step_size);    
+    btl_tfm_print_internals(&step_size);
     fp_from_double(&ymin, 0.38469586368246556);
     fp_copy(&ymin, &expected);
     printf("\nymin: %lf\n", fp_to_double(&ymin));
-    btl_tfm_print_internals(&ymin);    
+    btl_tfm_print_internals(&ymin);
     fp_mul_d(&step_size, 0, &c_imag);
     printf("\nc_imag: %lf\n", fp_to_double(&c_imag));
     btl_tfm_print_internals(&c_imag);

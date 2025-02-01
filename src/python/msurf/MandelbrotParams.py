@@ -186,15 +186,22 @@ class MandelbrotParams:
         '''
         x = 0
         y = 0
-        while True:
-            tile_params, tile_width, tile_height = self.tile_params(x, y, tile_size)
-            yield (x, y, tile_params, tile_width, tile_height)
-            x += tile_width
-            if x == self.width:
-                x = 0
-                y = y + tile_height
-            if y == self.height:
-                break
+        ITER_STEP = 100  # sync with opencl kernel
+        cur_iter = 0
+        while cur_iter < self.maxiter:
+            while True:
+                tile_params, tile_width, tile_height = self.tile_params(x, y, tile_size)
+                tile_params.maxiter = cur_iter + ITER_STEP
+                yield (x, y, tile_params, tile_width, tile_height)
+                x += tile_width
+                if x == self.width:
+                    x = 0
+                    y = y + tile_height
+                if y == self.height:
+                    break
+            x = 0
+            y = 0
+            cur_iter = cur_iter + ITER_STEP
 
     def get_params(self):
         """

@@ -9,6 +9,7 @@ OPENCL_DEBUG = False
 MAX_MAXITER = (2 << 30) / 256 # 2^31 / 256. limited by 32 bit signed ints in opencl
 
 DEBUG_INFO_SIZE = 52  # bytes
+ITER_STATE_ITEM_SIZE = 68  # int + 2*fp_digit bytes
 def parse_debug_info(array_slice):
     # Ensure the input is a numpy array of uint8
     #if not isinstance(array, np.ndarray) or array.dtype != np.uint8:
@@ -23,6 +24,21 @@ def parse_debug_info(array_slice):
     x, y, c_real, c_imag, i, d1, d2, d3, i1, i2, i3, i4, i5 = struct.unpack('ii ff i fff IIIII', byte_data)
 
     return (x, y, c_real, c_imag, i, d1, d2, d3, i1, i2, i3, i4, i5)
+
+def unpack_iter_state(array_slice):
+    byte_data = array_slice.tobytes()
+    if len(byte_data) != ITER_STATE_ITEM_SIZE:
+        raise ValueError(f'Input must be a numpy array slice with bytesize {ITER_STATE_ITEM_SIZE}')
+    iter_count = struct.unpack('i', byte_data[:4])
+    i1, i2, i3, i4, i5, i6, fp_used, fp_sign = struct.unpack('IIIIII ii', byte_data[4:36])
+    z_real = i3 + (i2 / (1<<32)) + (i1 / (1 << 64))
+    if fp_sign:
+        z_real = -z_real
+    i1, i2, i3, i4, i5, i6, fp_used, fp_sign = struct.unpack('IIIIII ii', byte_data[36:68])
+    z_imag = i3 + (i2 / (1<<32)) + (i1 / (1 << 64))
+    if fp_sign:
+        z_imag = -z_imag
+    return (iter_count, z_real, z_imag)
 
 def double_to_fp_int_array(float_value):
     '''
@@ -73,8 +89,19 @@ def mandelbrot_set(params: MandelbrotParams, horizon=2.0):
     # mandelbrot[np.abs(z) <= horizon] = maxiter  # inside white
     return mandelbrot
 
+class IterState:
+    '''
+    reuse this as long as xmin, ymin, and step_size are the same
+    '''
+    params = None
+    iter_buf = None
+    def __init__(self, params, iter_buf):
+        self.params = params
+        self.iter_buf = iter_buf
+
 class MandelbrotFuncs:
     use_tfm = 1  # high precision TFM library
+    iter_state = None
 
     def __init__(self):
         self.init_opencl()
@@ -104,6 +131,7 @@ class MandelbrotFuncs:
         '''
         xmin, xmax, ymin, ymax, xn, yn, maxiter = \
             params.xmin, params.xmax, params.ymin, params.ymax, params.width, params.height, params.maxiter
+        step_size = (xmax - xmin) / xn
         if maxiter >= MAX_MAXITER:
             print(f'WARNING: maxiter: {maxiter} greater than limit {MAX_MAXITER}. reducing to limit')
             maxiter = MAX_MAXITER
@@ -118,26 +146,37 @@ class MandelbrotFuncs:
 
         # Prepare data
         palette = params.iter_to_color()  # shape=(maxiter,3) dtype=np.uint8
-        image_array = np.full((xn, yn, 3), (50, 50, 255), dtype=np.uint8)
 
         # Allocate memory on the GPU
         output_buf_size = xn * yn * 3  # width * height * 3 channels * sizeof(uint8)
+        iter_buf_size = xn * yn * ITER_STATE_ITEM_SIZE  # (uint32 iter_count + fp_digit z_real + fp_digit z_imag)
+        output_buf_size += iter_buf_size
         if OPENCL_DEBUG:
             debug_size = DEBUG_INFO_SIZE * (xn * yn);
             output_buf_size = output_buf_size + debug_size;
-        output_buf = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, output_buf_size)
+        output_buf_np = np.zeros((output_buf_size,), dtype=np.uint8)
+        # Restore the iterbuf
+        if self.iter_state is None \
+           or self.iter_state.params.xmin != xmin \
+               or self.iter_state.params.ymin != ymin \
+                   or self.iter_state.params.width != xn \
+                       or self.iter_state.params.height != yn:
+            print('iter_state initialized')
+            iter_buf = np.zeros((xn,yn,ITER_STATE_ITEM_SIZE), dtype=np.uint8)
+            self.iter_state = IterState(params, iter_buf)
+        else:
+            print('iter_state reused')
+            output_buf_np[(xn * yn * 3):] = self.iter_state.iter_buf.flatten().view(np.uint8)
+
+        output_buf_test_pos = (xn * yn * 3) + ((300 * xn) + 400) * ITER_STATE_ITEM_SIZE
+        if 0:  # Debug iter state
+            iter_count, z_real, z_imag = unpack_iter_state(output_buf_np[output_buf_test_pos:output_buf_test_pos+ITER_STATE_ITEM_SIZE])
+            print(f'iter_count(400,300) (pre kernel): {iter_count}  z_real: {z_real}  z_imag: {z_imag}')
+        output_buf = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=output_buf_np)
         c_palette = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=palette)
-
-        # Copy the NumPy array to the OpenCL buffer
-        event = cl.enqueue_copy(self.queue, output_buf, image_array)
-
-        # Wait for the copy operation to complete if necessary
-        event.wait()
-
 
         # Execute the kernel
         shape = (xn, yn)
-        step_size = (xmax - xmin) / xn
         if self.use_tfm:
             # call tfm with high-precision xmin, ymin, step_size
             step_size_hi, step_size_lo = double_to_fp_int_array(step_size)
@@ -146,7 +185,7 @@ class MandelbrotFuncs:
             print(step_size, step_size_hi, step_size_lo)
             print(xmin, xmin_hi, xmin_lo)
             print(ymin, ymin_hi, ymin_lo)
-            print(f'mandelbrot_set_opencl: step_size: {step_size:.8g}')
+            print(f'mandelbrot_set_opencl: maxiter: {maxiter}  step_size: {step_size:.8g}')
             self.prg.mandelbrot(self.queue, shape, None, output_buf, c_palette,
                                 np.int32(maxiter), np.float32(horizon*horizon), np.int32(xn), np.int32(yn),
                                 np.uint64(xmin_hi), np.uint64(xmin_lo),
@@ -162,6 +201,8 @@ class MandelbrotFuncs:
 
         # Read results back to host
         cl.enqueue_copy(self.queue, mandelbrot, output_buf)
+        # read iter state back and store for next time
+        cl.enqueue_copy(self.queue, self.iter_state.iter_buf, output_buf, src_offset=(xn*yn*3))
         # DEBUG
         if OPENCL_DEBUG:
             debug_array = np.zeros((xn,yn,DEBUG_INFO_SIZE), dtype=np.uint8)
@@ -170,6 +211,11 @@ class MandelbrotFuncs:
                 x, y, c_real, c_imag, i, d1, d2, d3, i1, i2, i3, i4, i5 = parse_debug_info(debug_array[i][0])
                 print(f'({x}, {y}): {c_real}, {c_imag} => {i}  d1: {d1}  d2: {d2}  d3: {d3}')
                 print(f'  {i1} {i2} {i3} {i4} {i5}')
+        if 0:  # DEBUG THE iter_buf state
+            y = 300
+            for x in range(400, 410):
+                iter_count, z_real, z_imag = unpack_iter_state(self.iter_state.iter_buf[y][x])
+                print(f'({y}, {x}): iter_count: {iter_count}  z_real: {z_real}  z_imag: {z_imag}')
         # Cleanup
         output_buf.release()
         # Return
