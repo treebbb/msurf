@@ -444,7 +444,7 @@ class InteractiveImageDisplay:
             self.canvas.config(width=self.width, height=self.height)
             self.canvas.itemconfig(self.image_on_canvas, image=self.photo)
             self.canvas.update_idletasks()  # Force an update to show the tile immediately
-            self.master.after(100, self.generate_and_display_tiles, tile_iter)
+            self.master.after(10, self.generate_and_display_tiles, tile_iter)
         except StopIteration:
             pass
 

@@ -74,9 +74,9 @@ __kernel void mandelbrot(__global char *output,
         fp_add(&temp_fp, &c_real, &z_real);  // z_real = temp + c_real
 
         // z_real_squared = z_real * z_real
-        fp_mul_scaled(&z_real, &z_real, &z_real_squared);
+        fp_sqr_scaled(&z_real, &z_real_squared);
         // z_imag_squared = z_imag * z_imag
-        fp_mul_scaled(&z_imag, &z_imag, &z_imag_squared);
+        fp_sqr_scaled(&z_imag, &z_imag_squared);
     }
 
     // 8-bit rgb output

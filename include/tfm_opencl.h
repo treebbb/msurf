@@ -204,3 +204,6 @@ double fp_to_double(fp_int *num);
 void fp_from_float(fp_int *result, float value);
 float fp_to_float(fp_int *num);
 #endif
+/* faster square function */
+void fp_sqr(const fp_int *A, fp_int *B);
+void fp_sqr_scaled(const fp_int *a, const fp_int *b);

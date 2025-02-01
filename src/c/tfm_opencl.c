@@ -671,3 +671,143 @@ float fp_to_float(fp_int *num) {
     }
     return result;
 }
+
+/* from fp_sqr_comba_generic */
+/* ISO C portable code */
+
+#define COMBA_START
+
+#define CLEAR_CARRY \
+   c0 = c1 = c2 = 0;
+
+#define COMBA_STORE(x) \
+   x = c0;
+
+#define COMBA_STORE2(x) \
+   x = c1;
+
+#define CARRY_FORWARD \
+   do { c0 = c1; c1 = c2; c2 = 0; } while (0);
+
+#define COMBA_FINI
+
+/* multiplies point i and j, updates carry "c1" and digit c2 */
+#define SQRADD(i, j)                                 \
+   do { fp_word t;                                   \
+   t = c0 + ((fp_word)i) * ((fp_word)j);  c0 = t;    \
+   t = c1 + (t >> DIGIT_BIT);             c1 = t; c2 += t >> DIGIT_BIT; \
+   } while (0);
+
+
+/* for squaring some of the terms are doubled... */
+#define SQRADD2(i, j)                                                 \
+   do { fp_word t;                                                    \
+   t  = ((fp_word)i) * ((fp_word)j);                                  \
+   tt = (fp_word)c0 + t;                 c0 = tt;                              \
+   tt = (fp_word)c1 + (tt >> DIGIT_BIT); c1 = tt; c2 += tt >> DIGIT_BIT;       \
+   tt = (fp_word)c0 + t;                 c0 = tt;                              \
+   tt = (fp_word)c1 + (tt >> DIGIT_BIT); c1 = tt; c2 += tt >> DIGIT_BIT;       \
+   } while (0);
+
+#define SQRADDSC(i, j)                                                         \
+   do { fp_word t;                                                             \
+      t =  ((fp_word)i) * ((fp_word)j);                                        \
+      sc0 = (fp_digit)t; sc1 = (t >> DIGIT_BIT); sc2 = 0;                      \
+   } while (0);
+
+#define SQRADDAC(i, j)                                                         \
+   do { fp_word t;                                                             \
+   t = sc0 + ((fp_word)i) * ((fp_word)j);  sc0 = t;                            \
+   t = sc1 + (t >> DIGIT_BIT);             sc1 = t; sc2 += t >> DIGIT_BIT;     \
+   } while (0);
+
+#define SQRADDDB                                                               \
+   do { fp_word t;                                                             \
+   t = ((fp_word)sc0) + ((fp_word)sc0) + c0; c0 = t;                                                 \
+   t = ((fp_word)sc1) + ((fp_word)sc1) + c1 + (t >> DIGIT_BIT); c1 = t;                              \
+   c2 = c2 + ((fp_word)sc2) + ((fp_word)sc2) + (t >> DIGIT_BIT);                                     \
+   } while (0);
+
+void fp_sqr(const fp_int *A, fp_int *B)
+{
+  int       pa, ix, iz;
+  fp_digit  c0, c1, c2;
+  fp_int    tmp, *dst;
+  fp_word   tt;
+
+  /* get size of output and trim */
+  pa = A->used + A->used;
+  if (pa >= FP_SIZE) {
+     pa = FP_SIZE-1;
+  }
+
+  /* number of output digits to produce */
+  COMBA_START;
+  CLEAR_CARRY;
+
+  if (A == B) {
+     fp_zero(&tmp);
+     dst = &tmp;
+  } else {
+     fp_zero(B);
+     dst = B;
+  }
+
+  for (ix = 0; ix < pa; ix++) {
+      int             tx, ty, iy;
+      const fp_digit *tmpy, *tmpx;
+
+      /* get offsets into the two bignums */
+      ty = MIN(A->used-1, ix);
+      tx = ix - ty;
+
+      /* setup temp aliases */
+      tmpx = A->dp + tx;
+      tmpy = A->dp + ty;
+
+      /* this is the number of times the loop will iterrate,
+         while (tx++ < a->used && ty-- >= 0) { ... }
+       */
+      iy = MIN(A->used-tx, ty+1);
+
+      /* now for squaring tx can never equal ty
+       * we halve the distance since they approach
+       * at a rate of 2x and we have to round because
+       * odd cases need to be executed
+       */
+      iy = MIN(iy, (ty-tx+1)>>1);
+
+      /* forward carries */
+      CARRY_FORWARD;
+
+      /* execute loop */
+      for (iz = 0; iz < iy; iz++) {
+          fp_digit _tmpx = *tmpx++;
+          fp_digit _tmpy = *tmpy--;
+          SQRADD2(_tmpx, _tmpy);
+      }
+
+      /* even columns have the square term in them */
+      if ((ix&1) == 0) {
+          fp_digit _a_dp = A->dp[ix>>1];
+          SQRADD(_a_dp, A->dp[ix>>1]);
+      }
+
+      /* store it */
+      COMBA_STORE(dst->dp[ix]);
+  }
+
+  COMBA_FINI;
+
+  /* setup dest */
+  dst->used = pa;
+  fp_clamp (dst);
+  if (dst != B) {
+     fp_copy(dst, B);
+  }
+}
+/* square and then scale to keep float scale consistent */
+void fp_sqr_scaled(const fp_int *a, const fp_int *b) {
+    fp_sqr(a, b);
+    fp_rshd(b, FP_SCALE_SHIFT_FP_DIGITS);
+}
