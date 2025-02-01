@@ -5,7 +5,24 @@ import pyopencl as cl
 import struct
 
 
+OPENCL_DEBUG = False
 MAX_MAXITER = (2 << 30) / 256 # 2^31 / 256. limited by 32 bit signed ints in opencl
+
+DEBUG_INFO_SIZE = 52  # bytes
+def parse_debug_info(array_slice):
+    # Ensure the input is a numpy array of uint8
+    #if not isinstance(array, np.ndarray) or array.dtype != np.uint8:
+    #    raise ValueError("Input must be a numpy array of dtype uint8")
+
+    # Convert the relevant part of the array to bytes
+    byte_data = array_slice.tobytes()
+    if len(byte_data) != DEBUG_INFO_SIZE:
+        raise ValueError(f'Input must be a numpy array slice with bytesize {DEBUG_INFO_SIZE}')
+
+    # Unpack the data according to the C struct format
+    x, y, c_real, c_imag, i, d1, d2, d3, i1, i2, i3, i4, i5 = struct.unpack('ii ff i fff IIIII', byte_data)
+
+    return (x, y, c_real, c_imag, i, d1, d2, d3, i1, i2, i3, i4, i5)
 
 def double_to_fp_int_array(float_value):
     '''
@@ -78,7 +95,7 @@ class MandelbrotFuncs:
             kernel_src = open(kernel_code_path, 'r').read()
         # Compile the kernel
         self.prg = cl.Program(self.ctx, kernel_src).build()
-            
+
 
     # export PYOPENCL_CTX='0:1'
     def mandelbrot_set_opencl(self, params: MandelbrotParams, horizon=2.0):
@@ -91,20 +108,31 @@ class MandelbrotFuncs:
             print(f'WARNING: maxiter: {maxiter} greater than limit {MAX_MAXITER}. reducing to limit')
             maxiter = MAX_MAXITER
         # cache the mandelbrot array so we don't have to reallocate it unless width/height changes
-        mbc = params._mandelbrot_cache
+        #### !!! mbc = params._mandelbrot_cache
+        mbc = None
         if mbc is None or mbc[0] != xn or mbc[1] != yn:
-            mandelbrot = np.empty((yn, xn, 3), dtype=np.uint8)
+            mandelbrot = np.zeros((yn, xn, 3), dtype=np.uint8)
             params._mandelbrot_cache = (xn, yn, mandelbrot)
         else:
             mandelbrot = mbc[2]
 
         # Prepare data
         palette = params.iter_to_color()  # shape=(maxiter,3) dtype=np.uint8
+        image_array = np.full((xn, yn, 3), (50, 50, 255), dtype=np.uint8)
 
         # Allocate memory on the GPU
         output_buf_size = xn * yn * 3  # width * height * 3 channels * sizeof(uint8)
+        if OPENCL_DEBUG:
+            debug_size = DEBUG_INFO_SIZE * (xn * yn);
+            output_buf_size = output_buf_size + debug_size;
         output_buf = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, output_buf_size)
         c_palette = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=palette)
+
+        # Copy the NumPy array to the OpenCL buffer
+        event = cl.enqueue_copy(self.queue, output_buf, image_array)
+
+        # Wait for the copy operation to complete if necessary
+        event.wait()
 
 
         # Execute the kernel
@@ -118,7 +146,7 @@ class MandelbrotFuncs:
             print(step_size, step_size_hi, step_size_lo)
             print(xmin, xmin_hi, xmin_lo)
             print(ymin, ymin_hi, ymin_lo)
-            print(f'mandelbrot_set_opencl: step_size: {step_size:.8f}')
+            print(f'mandelbrot_set_opencl: step_size: {step_size:.8g}')
             self.prg.mandelbrot(self.queue, shape, None, output_buf, c_palette,
                                 np.int32(maxiter), np.float32(horizon*horizon), np.int32(xn), np.int32(yn),
                                 np.uint64(xmin_hi), np.uint64(xmin_lo),
@@ -131,9 +159,17 @@ class MandelbrotFuncs:
                                 np.int32(maxiter), np.float32(horizon*horizon), np.int32(xn), np.int32(yn),
                                 np.float32(xmin), np.float32(ymin), np.float32(step_size)
                                 )
-            
+
         # Read results back to host
         cl.enqueue_copy(self.queue, mandelbrot, output_buf)
+        # DEBUG
+        if OPENCL_DEBUG:
+            debug_array = np.zeros((xn,yn,DEBUG_INFO_SIZE), dtype=np.uint8)
+            cl.enqueue_copy(self.queue, debug_array, output_buf, src_offset=(xn * yn * 3))
+            for i in range(100):
+                x, y, c_real, c_imag, i, d1, d2, d3, i1, i2, i3, i4, i5 = parse_debug_info(debug_array[i][0])
+                print(f'({x}, {y}): {c_real}, {c_imag} => {i}  d1: {d1}  d2: {d2}  d3: {d3}')
+                print(f'  {i1} {i2} {i3} {i4} {i5}')
         # Cleanup
         output_buf.release()
         # Return

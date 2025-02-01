@@ -343,6 +343,8 @@ class InteractiveImageDisplay:
 
         # Bind key events
         self.master.bind('<Command-r>', self.key_handler)
+        self.master.bind('<Command-s>', self.key_handler)
+        self.master.bind('<Command-o>', self.key_handler)
         self.master.bind("<Right>", self.key_handler)
         self.master.bind("<Left>", self.key_handler)
         self.master.bind("<Command-equal>", self.key_handler)
@@ -383,7 +385,7 @@ class InteractiveImageDisplay:
         initial_xmin, initial_xmax = -2.0, 1.0
         initial_ymin, initial_ymax = -1.5, 1.5
         maxiter = 128
-        self.params = MandelbrotParams(initial_xmin, initial_xmax, initial_ymin, initial_ymax, self.width, self.height, maxiter)
+        self.params = MandelbrotParams.from_bounds(initial_xmin, initial_xmax, initial_ymin, initial_ymax, self.width, self.height, maxiter)
 
     def reset_image(self, event=None):
         self.set_initial_params()
@@ -400,20 +402,22 @@ class InteractiveImageDisplay:
         zoom_factor = Decimal(3.0 / (self.params.xmax - self.params.xmin))
         step_size = (self.params.xmax - self.params.xmin) / self.params.width
         self.update_status(f'Zoom: {zoom_factor:.2e}  MaxIter: {self.params.maxiter}  Step: {step_size:.2e}')
-        # Generate, normalize and convert to image
-        self.mandelbrot_array = self.mandelbrot_funcs.mandelbrot_set_opencl(self.params)
-        print(f'MB shape: {self.mandelbrot_array.shape}')
-        #self.normalized_mandelbrot = normalized = np.rot90(mandelbrot, k=1)
-        # draw image
-        self.image = Image.fromarray(self.mandelbrot_array, 'RGB')
-        self.photo = ImageTk.PhotoImage(self.image)
-        self.canvas.config(width=self.width, height=self.height)
+        # Initialize the TK image containers
         if self.image_on_canvas is None:
-            # create the image
+            # this will be run on the first reload_image() and after set_width_height() is called
+            self.image = Image.new('RGB', (self.width, self.height), (50,50,50))  # ~grey
+            self.photo = ImageTk.PhotoImage(self.image)
             self.image_on_canvas = self.canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
-        else:
-            # Update the image on the canvas
-            self.canvas.itemconfig(self.image_on_canvas, image=self.photo)
+        # Generate, normalize and convert to image
+        # assume ~10M calculations per second
+        # set tile_size to max of one second per tile
+        time_limit = 1.0  # sec
+        operations_per_second = 10000000
+        pixels_per_second = (time_limit * operations_per_second) / self.params.maxiter
+        tile_size = int(math.sqrt(pixels_per_second))
+        # tile_size = 128
+        gen = self.params.tile_iter(tile_size)
+        self.generate_and_display_tiles(gen)
         # Update status text position
         self.canvas.coords(self.status_text, self.width - 10, self.height - 10)
         self.canvas.tag_raise(self.status_text)
@@ -424,6 +428,26 @@ class InteractiveImageDisplay:
         #print(f'reload_image(): canvas after complete: {self.canvas.winfo_width()} {self.canvas.winfo_height()}')
         #print(f'reload_image(): master after complete: {self.master.winfo_width()} {self.master.winfo_height()}')
         #print(f'reload_image: _master_dims_vs_image_dims: {self._master_dims_vs_image_dims}')
+
+    def generate_and_display_tiles(self, tile_iter):
+        try:
+            x, y, tile_params, tile_width, tile_height = next(tile_iter)
+            tile_array = self.mandelbrot_funcs.mandelbrot_set_opencl(tile_params)
+            tile_image = Image.fromarray(tile_array, 'RGB')
+            image_x = x
+            image_y = (self.height - y - tile_height)
+            print(f'size: ({self.width}, {self.height})  image pos: ({image_x}, {image_y})  tile: {tile_params.get_params()}')
+            # PIL.Image.paste. box is a 2-tuple giving upper left
+            self.image.paste(tile_image, (image_x, image_y))
+            # draw image
+            self.photo = ImageTk.PhotoImage(self.image)
+            self.canvas.config(width=self.width, height=self.height)
+            self.canvas.itemconfig(self.image_on_canvas, image=self.photo)
+            self.canvas.update_idletasks()  # Force an update to show the tile immediately
+            self.master.after(100, self.generate_and_display_tiles, tile_iter)
+        except StopIteration:
+            pass
+
 
     def on_resize(self, event):
         #print(f'on_resize({event})')
@@ -439,11 +463,9 @@ class InteractiveImageDisplay:
         if master_dims == self._last_master_dims:
             # master dimensions are stable. update canvas size
             if self._master_dims_vs_image_dims is not None:
-                self.width = master_dims[0] - self._master_dims_vs_image_dims[0]
-                self.height = master_dims[1] - self._master_dims_vs_image_dims[1]
-                self.params.width = self.width
-                self.params.height = self.height
-                self.params.zoom_by_bbox(0, self.width, 0, self.height)  # reset complex plane bbox
+                width = master_dims[0] - self._master_dims_vs_image_dims[0]
+                height = master_dims[1] - self._master_dims_vs_image_dims[1]
+                self.set_width_height(width, height)
             #self.master.config(width=event.width, height=event.height)
             self.reload_image()
             self._last_master_dims = None
@@ -451,6 +473,22 @@ class InteractiveImageDisplay:
             self._last_master_dims = master_dims
             # wait and then check again
             self.master.after(500, self.check_resize_finished, event)
+
+    def set_width_height(self, width, height):
+        '''
+        call this to update width / height of the display
+        updates the MandelbrotParams, the TK resources, etc.
+        '''
+        self.width = width
+        self.height = height
+        self.params.width = width
+        self.params.height = height
+        self.params.zoom_by_bbox(0, width, 0, height)  # reset complex plane bbox
+        # clear these so they will be recreated in reload_image()
+        self.image = None
+        self.photo = None
+        self.image_on_canvas = None
+
 
     def on_button_press(self, event):
         """Start of the drag selection"""
@@ -512,8 +550,18 @@ class InteractiveImageDisplay:
         if event.keysym.lower() == 'r' and (event.state & 0x8):  # 0x10 is the bitmask for Command on Mac
             # You can implement the reset functionality here
             # For example, you might reset the view to the initial state or perform some other action
-            print("Command-R was pressed. Implement reset functionality here.")
             self.reset_image()
+        if event.keysym.lower() == 's' and (event.state & 0x8):  # 0x10 is the bitmask for Command on Mac
+            # You can implement the reset functionality here
+            # For example, you might reset the view to the initial state or perform some other action
+            print("Command-s was pressed. Implement save functionality here.")
+            self.save_bookmark()
+        if event.keysym.lower() == 'o' and (event.state & 0x8):  # 0x10 is the bitmask for Command on Mac
+            # You can implement the reset functionality here
+            # For example, you might reset the view to the initial state or perform some other action
+            print("Command-o was pressed. Implement load functionality here.")
+            self.load_bookmark()
+            self.reload_image()
         elif event.keysym == 'Right':
             self.cur_point_state.go_right()
             self.show_cur_point()
@@ -643,6 +691,14 @@ class InteractiveImageDisplay:
             if self.black_bounding_box_axis_line:
                 self.canvas.delete(self.black_bounding_box_axis_line)
                 self.black_bounding_box_axis_line = None
+
+    def save_bookmark(self):
+        bookmark_string = self.params.bookmark_string()
+        open('mandelbrot_bookmark.txt', 'w').write(bookmark_string)
+
+    def load_bookmark(self):
+        bookmark_string = open('mandelbrot_bookmark.txt', 'r').read()
+        self.params = MandelbrotParams.from_bookmark_string(bookmark_string, self.width, self.height)
 
 
 def main():

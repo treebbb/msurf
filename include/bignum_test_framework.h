@@ -95,3 +95,4 @@ static GCC_MARK_USED int btl_run_tests() {
 
 /* End test framework helpers */
 int test_bignum_main();
+int test_mandelbrot_tfm_main();

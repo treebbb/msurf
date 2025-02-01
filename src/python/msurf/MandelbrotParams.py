@@ -5,6 +5,13 @@ from math import pi, cos, log
 class MandelbrotParams:
     # used by mandelbrot_set_opencl. (width, height, np.array)
     _mandelbrot_cache = None
+    xmin = 0
+    xmax = 0
+    ymin = 0
+    ymax = 0
+    width = 0
+    height = 0
+    maxiter = 255
 
     def __init__(self, xmin, xmax, ymin, ymax, width, height, maxiter):
         """
@@ -18,20 +25,35 @@ class MandelbrotParams:
         :param width: Width of the image to be displayed
         :param height: Height of the image to be displayed
         :param maxiter: Maximum number of iterations for the Mandelbrot calculation
+
+        No proportion checks - you must ensure that xwidth/ywidth matches width/height
         """
+        self.xmin = xmin
+        self.xmax = xmax
+        self.ymin = ymin
+        self.ymax = ymax
+        self.width = int(width)
+        self.height = int(height)
+        self.maxiter = maxiter
+
+    @classmethod
+    def from_bounds(cls, xmin, xmax, ymin, ymax, width, height, maxiter):
+        '''
+        calculates the center of the given coords\
+        adjusts xmin, xmax based on width, height so that proportions match
+        '''
         xwidth = xmax - xmin
         yheight = height / width * xwidth
         xcenter = xmin + xwidth / 2
         ycenter = ymin + (ymax - ymin) / 2
-        print(f'MandelbrotParams: xcenter: {xcenter}  ycenter: {ycenter}')
-        self.xmin = xcenter - xwidth / 2
-        self.xmax = xcenter + xwidth / 2
-        self.ymin = ycenter - yheight / 2
-        self.ymax = ycenter + yheight / 2
-        print(f'MandelbrotParams: xmin: {self.xmin}  xmax: {self.xmax}  ymin: {self.ymin}  ymax: {self.ymax}')
-        self.width = int(width)
-        self.height = int(height)
-        self.maxiter = int(maxiter)
+        print(f'MandelbrotParams.from_bounds: xcenter: {xcenter}  ycenter: {ycenter}')
+        xmin = xcenter - xwidth / 2
+        xmax = xcenter + xwidth / 2
+        ymin = ycenter - yheight / 2
+        ymax = ycenter + yheight / 2
+        print(f'MandelbrotParams/from_bounds: xmin: {xmin}  xmax: {xmax}  ymin: {ymin}  ymax: {ymax}')
+        mp = MandelbrotParams(xmin, xmax, ymin, ymax, width, height, maxiter)
+        return mp
 
     def __str__(self):
         """
@@ -135,6 +157,45 @@ class MandelbrotParams:
             rad += rad_inc
         return palette
 
+    def tile_params(self, x, y, tile_size):
+        '''
+        x and y are relative to our width and height
+        tile_size is the width and height of the tile
+
+        returns the new params along with tile_x (remaining x pixels) and tile_y (remaining y pixels)
+        '''
+        # Define the bounds for this tile in the complex plane
+        tile_x = min(tile_size, self.width - x)  # remaining tile extent
+        tile_y = min(tile_size, self.height - y)
+        step_size = (self.xmax - self.xmin) / self.width
+        tile_xmin = self.xmin + (x * step_size)
+        tile_xmax = tile_xmin + (tile_x * step_size)
+        tile_ymin = self.ymin + (y * step_size)
+        tile_ymax = tile_ymin + (tile_y * step_size)
+
+        # Create new MandelbrotParams for this tile
+        tile_params = MandelbrotParams(tile_xmin, tile_xmax, tile_ymin, tile_ymax, tile_x, tile_y, self.maxiter)
+        return tile_params, tile_x, tile_y
+
+    def tile_iter(self, tile_size):
+        '''
+        return a generator that will loop over tiles in this display
+        ordering is [(x0, y0), (x1, y0), (x2, y0) ... (xN-1, yN-1)]
+        value is
+          (x, y, tile_params, tile_width, tile_height)
+        '''
+        x = 0
+        y = 0
+        while True:
+            tile_params, tile_width, tile_height = self.tile_params(x, y, tile_size)
+            yield (x, y, tile_params, tile_width, tile_height)
+            x += tile_width
+            if x == self.width:
+                x = 0
+                y = y + tile_height
+            if y == self.height:
+                break
+
     def get_params(self):
         """
         Get all parameters in a tuple format suitable for passing to the mandelbrot_set function.
@@ -143,3 +204,26 @@ class MandelbrotParams:
         """
         return (self.xmin, self.xmax, self.ymin, self.ymax, self.width, self.height, self.maxiter)
 
+    def bookmark_string(self):
+        d = {}
+        d['xcenter'] = (self.xmax + self.xmin) / 2.0
+        d['ycenter'] = (self.ymax + self.ymin) / 2.0
+        xwidth = self.xmax - self.xmin
+        d['step_size'] = xwidth / self.width
+        d['maxiter'] = self.maxiter
+        return repr(d)
+
+    @classmethod
+    def from_bookmark_string(self, bookmark_string, width, height):
+        d = eval(bookmark_string)  # !!! UNSAFE !!!
+        step_size = d['step_size']
+        xcenter = d['xcenter']
+        ycenter = d['ycenter']
+        maxiter = d['maxiter']
+        xwidth = width * step_size
+        yheight = height * step_size
+        xmin = xcenter - (xwidth / 2.0)
+        xmax = xcenter + (xwidth / 2.0)
+        ymin = ycenter - (yheight / 2.0)
+        ymax = ycenter + (yheight / 2.0)
+        return MandelbrotParams(xmin, xmax, ymin, ymax, width, height, maxiter)

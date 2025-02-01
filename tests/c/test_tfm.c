@@ -15,7 +15,7 @@ DEFINE_TEST(tfm_mul_2d_1) {
     fp_mul_2d(&a, 31, &a); // 2^31
     //printf("\na:\n");
     //btl_tfm_print_internals(&a);
-    assert(fp_cmp(&a, &expected) == FP_EQ && "equals zero");    
+    assert(fp_cmp(&a, &expected) == FP_EQ && "equals zero");
 }
 DEFINE_TEST(tfm_add_d_1) {
     fp_int a, b, c, expected;
@@ -78,6 +78,20 @@ DEFINE_TEST(tfm_mul_d_2) {
     fp_from_radix(&expected, "-18446744065119617025");  // (2^32 - 1) ^ 2
     assert(fp_cmp(&a, &expected) == FP_EQ && "equals zero");
 }
+DEFINE_TEST(tfm_fp_mul_d_3) {
+    fp_int step_size_fp, ymin_fp, c_imag_fp;
+    double step_size = 2.5402189032797118e-12;
+    double ymin = -1.2534398210784028;
+    for (int y = 0; y < 10; ++y) {
+        fp_from_double(&step_size_fp, step_size);
+        fp_mul_d(&step_size_fp, y, &c_imag_fp);
+        fp_from_double(&ymin_fp, ymin);
+        fp_add(&c_imag_fp, &ymin_fp, &c_imag_fp);
+        printf("\nc_imag:\n");
+        btl_tfm_print_internals(&c_imag_fp);
+    }
+}
+
 DEFINE_TEST(tfm_add1) {
     fp_int a, b, c, expected;
     fp_zero(&a);
@@ -87,7 +101,7 @@ DEFINE_TEST(tfm_add1) {
     assert(fp_cmp(&b, &c) == FP_EQ && "equals zero");
     fp_add(&b, &b, &c);
     fp_from_radix(&expected, "246");
-    assert(fp_cmp(&c, &expected) == FP_EQ && "equals zero");    
+    assert(fp_cmp(&c, &expected) == FP_EQ && "equals zero");
 }
 DEFINE_TEST(tfm_add2) {
     fp_int a, b, c, expected;
@@ -95,7 +109,7 @@ DEFINE_TEST(tfm_add2) {
     fp_from_radix(&b, "2147483647");
     fp_add(&b, &b, &c);
     fp_from_radix(&expected, "4294967294");
-    assert(fp_cmp(&c, &expected) == FP_EQ && "equals zero");    
+    assert(fp_cmp(&c, &expected) == FP_EQ && "equals zero");
 }
 DEFINE_TEST(tfm_add3) {
     fp_int a, b, c, expected;
@@ -103,7 +117,7 @@ DEFINE_TEST(tfm_add3) {
     fp_from_radix(&a, "-123");
     fp_from_radix(&b, "123");
     fp_add(&a, &b, &c);
-    assert(fp_cmp(&c, &expected) == FP_EQ && "equals zero");    
+    assert(fp_cmp(&c, &expected) == FP_EQ && "equals zero");
 }
 DEFINE_TEST(tfm_add4) {
     fp_int a, b, c, expected;
@@ -114,7 +128,24 @@ DEFINE_TEST(tfm_add4) {
         fp_add(&a, &b, &a);
     }
     fp_from_radix(&expected, "-21474836470");
-    assert(fp_cmp(&a, &expected) == FP_EQ && "equals zero");    
+    assert(fp_cmp(&a, &expected) == FP_EQ && "equals zero");
+}
+DEFINE_TEST(tfm_add5) {
+    fp_int step_size, ymin, c_imag, expected;
+    fp_from_double(&step_size, 2.7498992666297184e-12);
+    printf("\nstep_size: %lf\n", fp_to_double(&step_size));
+    btl_tfm_print_internals(&step_size);    
+    fp_from_double(&ymin, 0.38469586368246556);
+    fp_copy(&ymin, &expected);
+    printf("\nymin: %lf\n", fp_to_double(&ymin));
+    btl_tfm_print_internals(&ymin);    
+    fp_mul_d(&step_size, 0, &c_imag);
+    printf("\nc_imag: %lf\n", fp_to_double(&c_imag));
+    btl_tfm_print_internals(&c_imag);
+    fp_add(&c_imag, &ymin, &c_imag);
+    printf("\nc_imag(2): %lf\n", fp_to_double(&c_imag));
+    btl_tfm_print_internals(&c_imag);
+    assert(fp_cmp(&c_imag, &expected) == FP_EQ && "equals zero");
 }
 DEFINE_TEST(tfm_fp_mul_1) {
     int result_code;
@@ -124,7 +155,7 @@ DEFINE_TEST(tfm_fp_mul_1) {
     fp_from_radix(&expected, "-2147483647");
     fp_mul(&a, &b, &c);
     result_code = fp_cmp(&c, &expected);
-    assert(result_code == FP_EQ && "result code");    
+    assert(result_code == FP_EQ && "result code");
 }
 DEFINE_TEST(tfm_fp_mul_2) {
     int result_code;
@@ -139,7 +170,7 @@ DEFINE_TEST(tfm_fp_mul_2) {
     }
     fp_from_radix(&expected, "-79228162458924105385300197375"); // 0 - (FP_MASK ^ 3)
     result_code = fp_cmp(&a, &expected);
-    assert(result_code == FP_EQ && "result code");    
+    assert(result_code == FP_EQ && "result code");
 }
 DEFINE_TEST(tfm_fp_mul_3) {
     int result_code;
@@ -150,7 +181,7 @@ DEFINE_TEST(tfm_fp_mul_3) {
     fp_lshd(&expected, 2); // shift left 2 fp_digits (2**64) to account for multiplication
     fp_mul(&a, &b, &c);
     result_code = fp_cmp(&c, &expected);
-    assert(result_code == FP_EQ && "result code");    
+    assert(result_code == FP_EQ && "result code");
 }
 DEFINE_TEST(tfm_fp_from_double_1) {
     fp_int a, expected;
@@ -264,4 +295,6 @@ int main() {
     printf("HELLO from test_tfm.c\n");
     btl_run_tests();
     //test_bignum_main();
+    //test_mandelbrot_tfm_main();
+    return 0;
 }

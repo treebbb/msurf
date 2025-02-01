@@ -107,8 +107,13 @@ int isdigit(char c) {
 void fp_copy(const fp_int *a, fp_int *b);
 void fp_copy(const fp_int *a, fp_int *b) {
     if (a != b) {
-        for (int i = 0; i < a->used; ++i) {
-            b->dp[i] = a->dp[i];
+        for (int i = 0; i < FP_SIZE; ++i) {
+            if (i < a->used) {
+                b->dp[i] = a->dp[i];
+            }
+            else {
+                b->dp[i] = 0;
+            }
         }
         b->sign = a->sign;
         b->used = a->used;

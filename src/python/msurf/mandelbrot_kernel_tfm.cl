@@ -1,3 +1,19 @@
+// debug struct for passing info back to Python
+typedef struct {
+    int x;
+    int y;
+    float c_real;
+    float c_imag;
+    int i;
+    float debug1;
+    float debug2;
+    float debug3;
+    fp_digit i1;
+    fp_digit i2;
+    fp_digit i3;
+    fp_digit i4;
+    fp_digit i5;
+} debug_info;
 
 void fp_from_hi_lo(fp_int *dest, uint64_t val_hi, uint64_t val_lo);
 void fp_from_hi_lo(fp_int *dest, uint64_t val_hi, uint64_t val_lo) {
@@ -20,7 +36,9 @@ __kernel void mandelbrot(__global char *output,
     const int y = get_global_id(1);
     int i = 0;
     // fmaf(a, b, c) is equivalent to (a * b) + c, but with better rounding
-    fp_int z_real, z_imag, z_real_squared, z_imag_squared, c_real, c_imag, temp_fp;
+    fp_int z_real, z_imag, z_real_squared, z_imag_squared, c_real, c_imag, temp_fp, horizon_squared_fp;
+    //
+    fp_from_float(&horizon_squared_fp, horizon_squared);
     // set c_real to step_size
     fp_from_hi_lo(&c_real, step_size_hi, step_size_lo);
     // copy step_size to c_imag (faster than re-parse float)
@@ -42,10 +60,9 @@ __kernel void mandelbrot(__global char *output,
     fp_zero(&z_imag_squared);
 
     for(i = 0; i < maxiter; i++) {
-        // this horizon_check may introduce artifacts compared to the float implementation
-        fp_digit horizon_check = z_real_squared.dp[FP_SCALE_SHIFT_FP_DIGITS];
-        horizon_check += z_imag_squared.dp[FP_SCALE_SHIFT_FP_DIGITS];
-        if(horizon_check > horizon_squared)  break;
+        // check (z_real_squared + z_imag_squared) < horizon_squared
+        fp_add(&z_real_squared, &z_imag_squared, &temp_fp);
+        if (fp_cmp(&temp_fp, &horizon_squared_fp) == FP_GT) {  break; }
 
         // z_imag = 2.0 * z_real * z_imag + c_imag
         fp_mul_2d(&z_real, 1, &temp_fp);  // temp = z_real * 2
@@ -61,7 +78,8 @@ __kernel void mandelbrot(__global char *output,
         // z_imag_squared = z_imag * z_imag
         fp_mul_scaled(&z_imag, &z_imag, &z_imag_squared);
     }
-     // 8-bit rgb output
+
+    // 8-bit rgb output
     // the output buffer is displayed buffer[0] = top
     // so we use (height - y - 1) for indexing
     int row = height - y - 1;

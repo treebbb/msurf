@@ -16,7 +16,8 @@ SRC = \
   $(SRC_DIR)/tfm_opencl.c
 TEST_SRC = \
   tests/c/test_bignum.c \
-  tests/c/test_tfm.c
+  tests/c/test_tfm.c \
+  tests/c/test_mandelbrot_tfm.c
 OBJ = $(SRC:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 TEST_OBJ = $(TEST_SRC:tests/c/%.c=$(BUILD_DIR)/%.o)
 LIB = $(LIB_DIR)/libbignum.so
