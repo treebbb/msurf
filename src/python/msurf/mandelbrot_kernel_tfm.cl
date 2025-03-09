@@ -69,7 +69,7 @@ __kernel void mandelbrot(__global char *output,
     size_t arrpos = y * width + x;  // my index
     size_t state_offset = image_offset + 68 * arrpos;  // my state offset
     memcpy(&iter_count, output + state_offset, 4);  // restore iterator position
-    if (iter_count == maxiter || iter_count < 0) {
+    if (iter_count >= maxiter || iter_count < 0) {
         // we've already reached maxiter. No more processing
         set_output_color(output, palette, width, height, x, y, abs(iter_count), maxiter);
         return;

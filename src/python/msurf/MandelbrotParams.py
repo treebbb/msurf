@@ -35,6 +35,10 @@ class MandelbrotParams:
         self.width = int(width)
         self.height = int(height)
         self.maxiter = maxiter
+        # constants
+        self.palette_r = 255
+        self.palette_g = 255
+        self.palette_b = 0
 
     @classmethod
     def from_bounds(cls, xmin, xmax, ymin, ymax, width, height, maxiter):
@@ -139,23 +143,20 @@ class MandelbrotParams:
         returns an array for the color,size of each iteration
         [((blue, green, red), pixel_size_of_dot) ... ]
         '''
+        print(f'iter_to_color: rgb=({self.palette_r}, {self.palette_g}, {self.palette_b})')
         maxiter = self.maxiter
-        num_revolutions = 0.5  # repeat the color wheel this many times over maxiter
-        rad_inc = 2 * pi / (maxiter / num_revolutions)
-        red_shift = 0 # 0 degrees
-        green_shift = 2 * pi / 3  # 120 degrees
-        blue_shift = 4 * pi / 3  # 240 degrees
         palette = np.zeros((maxiter, 3), dtype=np.uint8)
-        rad = 0
         for i in range(maxiter):
-            r = int(log(i + 1) / log(maxiter + 1) * 255)
-            g = r
-            b = 0
-            palette[i][0] = r
-            palette[i][1] = g
-            palette[i][2] = b
-            rad += rad_inc
+            factor = log(i + 1) / log(maxiter + 1)
+            palette[i][0] = int(self.palette_r * factor)
+            palette[i][1] = int(self.palette_g * factor)
+            palette[i][2] = int(self.palette_b * factor)
         return palette
+
+    def set_palette(self, r, g, b):
+        self.palette_r = r
+        self.palette_g = g
+        self.palette_b = b
 
     def tile_params(self, x, y, tile_size):
         '''
@@ -175,6 +176,9 @@ class MandelbrotParams:
 
         # Create new MandelbrotParams for this tile
         tile_params = MandelbrotParams(tile_xmin, tile_xmax, tile_ymin, tile_ymax, tile_x, tile_y, self.maxiter)
+        tile_params.palette_r = self.palette_r
+        tile_params.palette_g = self.palette_g
+        tile_params.palette_b = self.palette_b
         return tile_params, tile_x, tile_y
 
     def tile_iter(self, tile_size):

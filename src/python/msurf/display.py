@@ -17,6 +17,20 @@ from tkinter import filedialog, simpledialog
 
 CLEAR_EVENT = 'CLEAR_EVENT'
 
+def rgb_to_hex(rgb):
+    """
+    Convert RGB tuple to hex color string.
+
+    :param rgb: Tuple of three integers (0-255) representing red, green, and blue values.
+    :return: String of the form '#RRGGBB'
+    """
+    # Ensure each component is within the valid range
+    r, g, b = [max(0, min(255, int(x))) for x in rgb]
+
+    # Convert each component to hexadecimal and ensure two digits
+    return '#{:02x}{:02x}{:02x}'.format(r, g, b)
+
+
 class CurPointState:
     '''
     used to track a single point and allow display of position
@@ -56,6 +70,9 @@ class CurPointState:
 
     def z(self):
         return self.history[self.steps]
+
+    def next_n(self, offset, n):
+        return self.history[self.steps + offset:self.steps + offset + n]
 
     def _calc_escape(self):
         '''
@@ -289,6 +306,58 @@ class ImageProcessor:
         return furthest_point
 
 
+class RGBInputDialog(tk.Toplevel):
+    def __init__(self, master, callback, red=0, green=0, blue=0, **kw):
+        super().__init__(master, **kw)
+        self.red = red
+        self.green = green
+        self.blue = blue
+        self.withdraw()  # Hide initially
+        self.protocol("WM_DELETE_WINDOW", self.hide_dialog)  # Handle window close button
+        self.setup_ui()
+        self.callback = callback
+
+    def setup_ui(self):
+        tk.Label(self, text="Red (0-255):").grid(row=0, sticky="w")
+        tk.Label(self, text="Green (0-255):").grid(row=1, sticky="w")
+        tk.Label(self, text="Blue (0-255):").grid(row=2, sticky="w")
+
+        self.red_entry = tk.Entry(self)
+        self.red_entry.insert(0, self.red)
+        self.green_entry = tk.Entry(self)
+        self.green_entry.insert(0, self.green)
+        self.blue_entry = tk.Entry(self)
+        self.blue_entry.insert(0, self.blue)
+
+        self.red_entry.grid(row=0, column=1)
+        self.green_entry.grid(row=1, column=1)
+        self.blue_entry.grid(row=2, column=1)
+
+        self.submit_button = tk.Button(self, text="Submit", command=self.submit)
+        self.submit_button.grid(row=3, columnspan=2)
+
+    def submit(self):
+        try:
+            red = int(self.red_entry.get())
+            green = int(self.green_entry.get())
+            blue = int(self.blue_entry.get())
+            if 0 <= red <= 255 and 0 <= green <= 255 and 0 <= blue <= 255:
+                print(f"RGB values set to: {red, green, blue}")
+                self.callback(red,green,blue)
+                self.hide_dialog()
+            else:
+                tk.messagebox.showerror("Value Error", "RGB values must be between 0 and 255.")
+        except ValueError:
+            tk.messagebox.showerror("Value Error", "Please enter numeric values for RGB.")
+
+    def show_dialog(self):
+        self.deiconify()
+        self.lift()
+
+    def hide_dialog(self):
+        self.withdraw()
+
+
 class InteractiveImageDisplay:
     # state
     width = None
@@ -299,6 +368,7 @@ class InteractiveImageDisplay:
     # point iterator
     cur_point_state = None
     cur_point_rect = None
+    cur_point_lines = None
     # resize state
     _is_resizing = None
     _master_dims_vs_image_dims = None
@@ -373,6 +443,19 @@ class InteractiveImageDisplay:
         # Add a button to draw bounding box around largest black region
         button = tk.Button(self.button_frame, text="Draw Bounding Box", command=self.toggle_draw_bounding_box)
         button.pack(side=tk.LEFT)
+
+        # Color palette
+        self.rgb_dialog = RGBInputDialog(
+            self.master, self.set_param_palette,
+            red=self.params.palette_r,
+            green=self.params.palette_g,
+            blue=self.params.palette_b,
+        )
+        self.showing_dialog = False
+
+        self.rgb_button = tk.Button(self.button_frame, text="Color Palette", command=self.toggle_rgb_dialog)
+        self.rgb_button.pack(side=tk.LEFT)
+
 
         # Bind the configure event to handle window resizing
         self.master.bind('<Configure>', self.on_resize)
@@ -515,6 +598,7 @@ class InteractiveImageDisplay:
         y1, y2 = min(self.start_y, current_y), max(self.start_y, current_y)
         #print(f'on_button_release: x1: {x1}  x2: {x2}  y1: {y1}  y2: {y2}')
         if (x1 == x2) or (y1 == y2):
+            # single click / point.  Show the position at each iteration
             # clear current rect
             self.canvas.delete(self.rect)
             xpos, ypos = self.params.image_to_complex(x1, y1)
@@ -578,14 +662,49 @@ class InteractiveImageDisplay:
     def show_cur_point(self):
         z = self.cur_point_state.z()
         x, y = self.params.complex_to_image(z.real, z.imag)
+        orig_x, orig_y = x, y
         message = self.cur_point_state.message()
+        out_of_bounds = False
         # print(f'iter_cur_point: orig=({z})  new=({x}, {y})')
         if x < 0 or x >= self.params.width or y < 0 or y >= self.params.height:
             message = 'OUT-OF-BOUNDS  ' + message
+            out_of_bounds = True
         elif self.cur_point_rect is None:
             self.cur_point_rect = self.canvas.create_rectangle(x, y, x+3, y+3, fill='blue', outline='blue')
         else:
             self.canvas.coords(self.cur_point_rect, x, y, x+3, y+3)
+        # draw lines between the next N points up to the cycle
+        if self.cur_point_lines is not None:
+            for line in self.cur_point_lines:
+                self.canvas.delete(line)
+        else:
+            self.cur_point_lines = []
+        loop_len = 0
+        DIST_MAX = 0.0
+        increment = 255.0/self.params.maxiter
+        r = g = 255
+        b = 0
+        for point2 in self.cur_point_state.next_n(1, self.params.maxiter):
+            if out_of_bounds:
+                break;
+            x2, y2 = self.params.complex_to_image(point2.real, point2.imag)
+            if x < 0 or x >= self.params.width or y < 0 or y >= self.params.height:
+                message = 'OUT-OF-BOUNDS  ' + message
+                out_of_bounds = True
+            else:
+                line = self.canvas.create_line(x, y, x2, y2, fill=rgb_to_hex((r,g,b)))
+                self.cur_point_lines.append(line)
+            loop_len += 1
+            dist_to_orig = math.sqrt((x2 - orig_x)**2 + (y2 - orig_y))
+            if dist_to_orig < DIST_MAX:
+                message = f'Loop : {loop_len}  dist_to_orig: {dist_to_orig:.4f} ' + message
+                break
+            r = max(r - increment, 30)
+            g = r
+            b = min(b + increment, 255)
+            x, y = x2, y2
+
+
         self.update_status(message)
 
     def set_maxiter_dialog(self):
@@ -691,6 +810,22 @@ class InteractiveImageDisplay:
             if self.black_bounding_box_axis_line:
                 self.canvas.delete(self.black_bounding_box_axis_line)
                 self.black_bounding_box_axis_line = None
+
+    def toggle_rgb_dialog(self):
+        if not self.showing_dialog:
+            self.rgb_dialog.show_dialog()
+            self.rgb_button.config(text="Hide RGB Dialog")
+            self.showing_dialog = True
+        else:
+            self.rgb_dialog.hide_dialog()
+            self.rgb_button.config(text="Show RGB Dialog")
+            self.showing_dialog = False
+
+    def set_param_palette(self, r, g, b):
+        print(f'set_param_palette({r}, {g}, {b})')
+        self.toggle_rgb_dialog()
+        self.params.set_palette(r,g,b)
+        self.reload_image()
 
     def save_bookmark(self):
         bookmark_string = self.params.bookmark_string()
