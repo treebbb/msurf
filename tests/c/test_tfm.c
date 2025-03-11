@@ -294,7 +294,6 @@ DEFINE_TEST(tfm_fp_mul_scaled_1) {
 int main() {
     printf("HELLO from test_tfm.c\n");
     btl_run_tests();
-    //test_bignum_main();
     //test_mandelbrot_tfm_main();
     return 0;
 }

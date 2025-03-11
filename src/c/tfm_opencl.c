@@ -807,7 +807,7 @@ void fp_sqr(const fp_int *A, fp_int *B)
   }
 }
 /* square and then scale to keep float scale consistent */
-void fp_sqr_scaled(const fp_int *a, const fp_int *b) {
+void fp_sqr_scaled(const fp_int *a, fp_int *b) {
     fp_sqr(a, b);
     fp_rshd(b, FP_SCALE_SHIFT_FP_DIGITS);
 }

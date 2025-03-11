@@ -1,7 +1,7 @@
 # Compiler and flags
 CC = gcc
 CFLAGS = -std=c99 -Wall -Wextra -Werror -pedantic -g -Iinclude
-LDFLAGS = -Lbuild/lib -lbignum
+LDFLAGS = -Lbuild/lib -ltfm_opencl
 
 # Directories
 SRC_DIR = src/c
@@ -11,17 +11,14 @@ BIN_DIR = $(BUILD_DIR)/bin
 LIB_DIR = $(BUILD_DIR)/lib
 
 # Files
-SRC = \
-  $(SRC_DIR)/bignum.c \
-  $(SRC_DIR)/tfm_opencl.c
+SRC = $(SRC_DIR)/tfm_opencl.c
 TEST_SRC = \
-  tests/c/test_bignum.c \
   tests/c/test_tfm.c \
   tests/c/test_mandelbrot_tfm.c
 OBJ = $(SRC:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 TEST_OBJ = $(TEST_SRC:tests/c/%.c=$(BUILD_DIR)/%.o)
-LIB = $(LIB_DIR)/libbignum.so
-TEST_EXE = $(BIN_DIR)/test_bignum
+LIB = $(LIB_DIR)/libtfm_opencl.so
+TEST_EXE = $(BIN_DIR)/test_tfm
 
 # Targets
 all: $(BIN_DIR) $(LIB_DIR) $(LIB) $(TEST_EXE)
@@ -39,10 +36,10 @@ $(BUILD_DIR)/%.o: tests/c/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(LIB): $(OBJ)
-	$(CC) -shared -rdynamic -o $@ $(OBJ)
+	$(CC) -shared -o $@ $(OBJ)
 
-$(TEST_EXE): $(TEST_OBJ)
-	$(CC) $(CFLAGS)  $(TEST_OBJ) -o $@ $(LDFLAGS)
+$(TEST_EXE): $(TEST_OBJ) $(LIB)
+	$(CC) $(TEST_OBJ) -o $@ $(LDFLAGS)
 
 # Clean up
 clean:
@@ -51,6 +48,7 @@ clean:
 # Phony targets
 .PHONY: all clean
 
-# debug
+# Debug
 debug:
-	@echo "TEST_OBJ is $(TEST_OBJ)"
+	@echo "OBJ: $(OBJ)"
+	@echo "TEST_OBJ: $(TEST_OBJ)"
